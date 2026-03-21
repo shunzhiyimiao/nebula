@@ -1,0 +1,320 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ======================== 用户 ========================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  grade         Grade?
+  subjects      Subject[] @default([])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  questions         Question[]
+  practiceSessions  PracticeSession[]
+  practiceAnswers   PracticeAnswer[]
+  dailyStats        DailyStats[]
+}
+
+enum Grade {
+  PRIMARY_1
+  PRIMARY_2
+  PRIMARY_3
+  PRIMARY_4
+  PRIMARY_5
+  PRIMARY_6
+  JUNIOR_1
+  JUNIOR_2
+  JUNIOR_3
+  SENIOR_1
+  SENIOR_2
+  SENIOR_3
+}
+
+enum Subject {
+  MATH
+  CHINESE
+  ENGLISH
+  PHYSICS
+  CHEMISTRY
+  BIOLOGY
+  HISTORY
+  GEOGRAPHY
+  POLITICS
+}
+
+// ======================== NextAuth ========================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ======================== 题目记录 ========================
+
+model Question {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subject         Subject
+  gradeLevel      Grade?
+  questionType    QuestionType
+  originalImage   String?
+  questionText    String
+  questionLatex   String?
+
+  solution        Json
+  solutionText    String
+  steps           Json
+  keyFormulas     Json?
+
+  userAnswer      String?
+  isCorrect       Boolean?
+
+  isInNotebook    Boolean       @default(false)
+  errorReason     String?
+  errorType       ErrorType?
+  masteryLevel    MasteryLevel  @default(NOT_MASTERED)
+  reviewCount     Int           @default(0)
+  nextReviewAt    DateTime?
+
+  difficulty      Difficulty    @default(MEDIUM)
+  source          String?
+  chapter         String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  knowledgePoints QuestionKnowledgePoint[]
+  practiceOrigin  PracticeQuestion[]
+
+  @@index([userId, subject, createdAt])
+  @@index([userId, isInNotebook, subject])
+  @@index([userId, masteryLevel])
+  @@index([userId, nextReviewAt])
+}
+
+enum QuestionType {
+  CHOICE
+  MULTI_CHOICE
+  FILL_BLANK
+  SHORT_ANSWER
+  CALCULATION
+  PROOF
+  APPLICATION
+  TRUE_FALSE
+  OTHER
+}
+
+enum ErrorType {
+  CONCEPT_CONFUSION
+  FORMULA_ERROR
+  CALCULATION_MISTAKE
+  LOGIC_ERROR
+  MISSING_CONDITION
+  METHOD_WRONG
+  CARELESS
+  NOT_UNDERSTOOD
+  OTHER
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  CHALLENGE
+}
+
+enum MasteryLevel {
+  NOT_MASTERED
+  PARTIAL
+  MASTERED
+}
+
+// ======================== 知识点 ========================
+
+model KnowledgePoint {
+  id              String    @id @default(cuid())
+  name            String
+  subject         Subject
+  gradeLevel      Grade?
+  chapter         String?
+
+  definition      String
+  formulas        Json?
+  keyPoints       Json?
+  examples        Json?
+  commonMistakes  Json?
+
+  parentId        String?
+  parent          KnowledgePoint?   @relation("KnowledgeTree", fields: [parentId], references: [id])
+  children        KnowledgePoint[]  @relation("KnowledgeTree")
+  relatedIds      String[]          @default([])
+
+  questions       QuestionKnowledgePoint[]
+
+  @@unique([name, subject])
+  @@index([subject, gradeLevel])
+}
+
+model QuestionKnowledgePoint {
+  questionId       String
+  knowledgePointId String
+  question         Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  knowledgePoint   KnowledgePoint  @relation(fields: [knowledgePointId], references: [id], onDelete: Cascade)
+  isMainPoint      Boolean         @default(false)
+
+  @@id([questionId, knowledgePointId])
+}
+
+// ======================== 练习系统 ========================
+
+model PracticeSession {
+  id                    String        @id @default(cuid())
+  userId                String
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type                  PracticeType
+  subject               Subject
+  title                 String
+  description           String?
+
+  targetKnowledgePoints String[]      @default([])
+  difficulty            Difficulty    @default(MEDIUM)
+  questionCount         Int
+
+  status                SessionStatus @default(PENDING)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  score                 Int?
+  totalScore            Int?
+  accuracy              Float?
+
+  createdAt             DateTime      @default(now())
+
+  questions             PracticeQuestion[]
+  answers               PracticeAnswer[]
+
+  @@index([userId, type, createdAt])
+  @@index([userId, status])
+}
+
+enum PracticeType {
+  DAILY
+  WEEKLY
+  TARGETED
+  REVIEW
+  CUSTOM
+}
+
+enum SessionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+}
+
+model PracticeQuestion {
+  id                String          @id @default(cuid())
+  sessionId         String
+  session           PracticeSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  questionText      String
+  questionLatex     String?
+  questionType      QuestionType
+  options           Json?
+  correctAnswer     String
+  solution          Json
+  steps             Json
+  difficulty        Difficulty
+
+  knowledgePointIds String[]        @default([])
+
+  originQuestionId  String?
+  originQuestion    Question?       @relation(fields: [originQuestionId], references: [id])
+
+  sortOrder         Int
+
+  answer            PracticeAnswer?
+
+  @@index([sessionId, sortOrder])
+}
+
+model PracticeAnswer {
+  id                  String           @id @default(cuid())
+  userId              String
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionId           String
+  session             PracticeSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  practiceQuestionId  String           @unique
+  practiceQuestion    PracticeQuestion @relation(fields: [practiceQuestionId], references: [id], onDelete: Cascade)
+
+  userAnswer          String
+  isCorrect           Boolean
+  timeSpent           Int?
+  aiExplanation       String?
+
+  createdAt           DateTime         @default(now())
+}
+
+// ======================== 每日统计 ========================
+
+model DailyStats {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date              DateTime @db.Date
+
+  questionsScanned  Int      @default(0)
+  questionsCorrect  Int      @default(0)
+  questionsWrong    Int      @default(0)
+  practiceCompleted Int      @default(0)
+  practiceAccuracy  Float?
+  studyMinutes      Int      @default(0)
+  newKnowledgePoints Int     @default(0)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}

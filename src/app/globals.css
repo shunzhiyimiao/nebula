@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Fonts ===== */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ===== CSS Variables ===== */
+:root {
+  --color-bg: #f8f9fc;
+  --color-bg-card: #ffffff;
+  --color-bg-elevated: #ffffff;
+  --color-text-primary: #1a1d2e;
+  --color-text-secondary: #6b7194;
+  --color-text-tertiary: #9ca3c4;
+  --color-border: #e8ebf4;
+  --color-border-light: #f0f2f8;
+
+  --color-nebula: #4c6ef5;
+  --color-aurora: #9333ea;
+  --color-solar: #ff6d1f;
+  --color-correct: #10b981;
+  --color-wrong: #ef4444;
+  --color-partial: #f59e0b;
+
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  --shadow-sm: 0 1px 3px rgba(26, 29, 46, 0.04), 0 1px 2px rgba(26, 29, 46, 0.06);
+  --shadow-md: 0 4px 12px rgba(26, 29, 46, 0.06), 0 2px 4px rgba(26, 29, 46, 0.04);
+  --shadow-lg: 0 12px 32px rgba(26, 29, 46, 0.08), 0 4px 8px rgba(26, 29, 46, 0.04);
+  --shadow-glow: 0 0 20px rgba(76, 110, 245, 0.15);
+
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ===== Base ===== */
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
+    font-family: 'Noto Sans SC', 'SF Pro Display', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* 滚动条样式 */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 4px;
+  }
+}
+
+/* ===== Utilities ===== */
+@layer utilities {
+  .text-gradient-nebula {
+    background: linear-gradient(135deg, #4c6ef5, #9333ea);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-solar {
+    background: linear-gradient(135deg, #ff6d1f, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-glass {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .bg-nebula-gradient {
+    background: linear-gradient(135deg, #4c6ef5 0%, #7c3aed 50%, #9333ea 100%);
+  }
+
+  .bg-mesh {
+    background-color: var(--color-bg);
+    background-image:
+      radial-gradient(at 20% 20%, rgba(76, 110, 245, 0.08) 0px, transparent 50%),
+      radial-gradient(at 80% 80%, rgba(147, 51, 234, 0.06) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(255, 109, 31, 0.04) 0px, transparent 50%);
+  }
+
+  /* 底部安全区域 padding */
+  .pb-safe {
+    padding-bottom: calc(80px + var(--safe-bottom));
+  }
+
+  /* 卡片悬停效果 */
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
+  .card-hover:active {
+    transform: translateY(0);
+  }
+}
+
+/* ===== KaTeX 公式自定义样式 ===== */
+.katex-display {
+  margin: 0.8em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.4em 0;
+}
+
+.katex {
+  font-size: 1.05em;
+}
+
+/* ===== 解题步骤动画 ===== */
+.step-enter {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.step-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
