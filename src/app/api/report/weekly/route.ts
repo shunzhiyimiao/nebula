@@ -1,8 +1,10 @@
+import { isDatabaseAvailable } from "@/lib/db-available";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /** GET /api/report/weekly — 每周详细数据 */
 export async function GET(request: NextRequest) {
+  if (!isDatabaseAvailable()) return NextResponse.json({ data: [], success: true });
   const userId = new URL(request.url).searchParams.get("userId") || "demo-user";
   const weeksBack = parseInt(new URL(request.url).searchParams.get("weeks") || "4");
 

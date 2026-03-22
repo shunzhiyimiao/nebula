@@ -1,8 +1,10 @@
+import { isDatabaseAvailable } from "@/lib/db-available";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /** GET /api/knowledge — 获取知识点列表（支持按学科/年级筛选） */
 export async function GET(request: NextRequest) {
+  if (!isDatabaseAvailable()) return NextResponse.json({ data: [], success: true });
   const { searchParams } = new URL(request.url);
   const subject = searchParams.get("subject");
   const grade = searchParams.get("grade");

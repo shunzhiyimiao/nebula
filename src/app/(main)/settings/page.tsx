@@ -3,230 +3,176 @@
 import { useState, useEffect } from "react";
 import PageHeader from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
+import {
+  getClientProvider,
+  setClientProvider,
+  getApiKey,
+  setApiKey,
+  isConfigured,
+  PROVIDER_CONFIG,
+  type ClientProvider,
+} from "@/lib/ai/key-store";
 
-interface ProviderInfo {
-  provider: string;
-  label: string;
-  supportsVision: boolean;
-  models: {
-    claude: { model: string; configured: boolean };
-    deepseek: { model: string; configured: boolean; baseUrl: string };
-  };
-}
-
-const AI_PROVIDERS = [
-  {
-    value: "deepseek",
-    name: "DeepSeek",
-    desc: "DeepSeek-V3，国内访问快，性价比高",
-    icon: "🔮",
-    color: "from-blue-600 to-cyan-500",
-    features: ["中文理解强", "数学推理好", "API价格低", "国内直连"],
-  },
-  {
-    value: "minimax",
-    name: "MiniMax",
-    desc: "MiniMax-M2.5，代码和智能体能力强",
-    icon: "⚡",
-    color: "from-violet-600 to-purple-500",
-    features: ["多模态", "代码能力强", "长上下文", "国内直连"],
-  },
-  {
-    value: "qwen",
-    name: "通义千问",
-    desc: "阿里云 Qwen，中文能力顶尖，有专用OCR模型",
-    icon: "🔷",
-    color: "from-indigo-500 to-blue-500",
-    features: ["中文最强", "专用OCR模型", "阿里云生态", "国内直连"],
-  },
-  {
-    value: "claude",
-    name: "Claude",
-    desc: "Anthropic Claude，多模态能力强",
-    icon: "🤖",
-    color: "from-orange-500 to-amber-500",
-    features: ["多模态强", "长文本", "推理深度", "需要翻墙"],
-  },
-];
+const PROVIDERS = Object.entries(PROVIDER_CONFIG).map(([value, cfg]) => ({
+  value: value as ClientProvider,
+  ...cfg,
+}));
 
 export default function SettingsPage() {
-  const [providerInfo, setProviderInfo] = useState<ProviderInfo | null>(null);
-  const [activeProvider, setActiveProvider] = useState(
-    process.env.NEXT_PUBLIC_AI_PROVIDER || "deepseek"
-  );
+  const [provider, setProvider] = useState<ClientProvider>("qwen");
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetch("/api/ai/provider")
-      .then((r) => r.json())
-      .then(setProviderInfo)
-      .catch(() => {});
+    setProvider(getClientProvider());
+    const loaded: Record<string, string> = {};
+    PROVIDERS.forEach((p) => {
+      loaded[p.value] = getApiKey(p.value);
+    });
+    setKeys(loaded);
   }, []);
+
+  const handleSave = () => {
+    setClientProvider(provider);
+    PROVIDERS.forEach((p) => {
+      if (keys[p.value] !== undefined) {
+        setApiKey(p.value, keys[p.value].trim());
+      }
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
 
   return (
     <div>
       <PageHeader title="设置" />
 
       <div className="px-4 pt-5 space-y-4 animate-fade-in">
-        {/* Profile */}
-        <div className="bg-white rounded-2xl p-4 shadow-[var(--shadow-sm)] border border-[var(--color-border-light)]">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-nebula-gradient flex items-center justify-center text-white text-xl font-bold">
-              N
-            </div>
-            <div>
-              <h3 className="font-semibold">未登录</h3>
-              <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">登录后数据自动云端同步</p>
-            </div>
-          </div>
-        </div>
 
-        {/* AI Provider Selection */}
+        {/* AI 引擎选择 */}
         <section className="bg-white rounded-2xl shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] overflow-hidden">
           <div className="px-4 py-3 border-b border-[var(--color-border-light)]">
             <h3 className="text-sm font-semibold">AI 引擎</h3>
-            <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">
-              选择解题和OCR使用的AI模型
-            </p>
+            <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">选择解题使用的 AI 模型</p>
           </div>
 
-          <div className="p-4 space-y-3">
-            {AI_PROVIDERS.map((p) => {
-              const isActive = activeProvider === p.value;
-              const isConfigured = providerInfo?.models?.[p.value as keyof typeof providerInfo.models]?.configured;
-
+          <div className="p-4 space-y-2">
+            {PROVIDERS.map((p) => {
+              const active = provider === p.value;
+              const configured = isConfigured(p.value) || keys[p.value]?.length > 0;
               return (
                 <button
                   key={p.value}
-                  onClick={() => setActiveProvider(p.value)}
+                  onClick={() => setProvider(p.value)}
                   className={cn(
-                    "w-full rounded-2xl p-4 text-left transition-all border-2",
-                    isActive
-                      ? "border-nebula-400 bg-nebula-50/30 shadow-sm"
-                      : "border-[var(--color-border-light)] bg-white hover:bg-gray-50"
+                    "w-full rounded-2xl p-3.5 text-left transition-all border-2",
+                    active ? "border-nebula-400 bg-nebula-50/30" : "border-[var(--color-border-light)] bg-white"
                   )}
                 >
-                  <div className="flex items-start gap-3">
-                    {/* Icon */}
-                    <div className={cn(
-                      "w-11 h-11 rounded-xl bg-gradient-to-br flex items-center justify-center text-xl flex-shrink-0",
-                      p.color
-                    )}>
-                      {p.icon}
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{p.icon}</span>
+                    <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">{p.name}</span>
-                        {isActive && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-nebula-100 text-nebula-600 font-medium">
-                            当前使用
-                          </span>
-                        )}
-                        {isConfigured === false && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 font-medium">
-                            未配置
-                          </span>
-                        )}
-                        {isConfigured === true && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-50 text-correct font-medium">
-                            已配置
-                          </span>
-                        )}
+                        {active && <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-nebula-100 text-nebula-600 font-medium">当前使用</span>}
+                        {configured
+                          ? <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-600 font-medium">已配置</span>
+                          : <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-600 font-medium">未配置</span>
+                        }
+                        {p.supportsVision && <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-600 font-medium">支持拍照</span>}
                       </div>
-                      <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">{p.desc}</p>
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {p.features.map((f) => (
-                          <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-[var(--color-text-secondary)]">
-                            {f}
-                          </span>
-                        ))}
-                      </div>
+                      <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">{p.model}</p>
                     </div>
-
-                    {/* Radio indicator */}
                     <div className={cn(
-                      "w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1 transition-colors",
-                      isActive ? "border-nebula-500" : "border-gray-300"
+                      "w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors",
+                      active ? "border-nebula-500" : "border-gray-300"
                     )}>
-                      {isActive && <div className="w-2.5 h-2.5 rounded-full bg-nebula-500" />}
+                      {active && <div className="w-2.5 h-2.5 rounded-full bg-nebula-500" />}
                     </div>
                   </div>
                 </button>
               );
             })}
           </div>
+        </section>
 
-          {/* Current Model Info */}
-          {providerInfo && (
-            <div className="px-4 pb-4">
-              <div className="bg-gray-50 rounded-xl p-3 text-[10px] text-[var(--color-text-tertiary)] space-y-1">
-                <div className="flex justify-between">
-                  <span>当前引擎</span>
-                  <span className="font-medium text-[var(--color-text-secondary)]">{providerInfo.label}</span>
+        {/* API Key 输入 */}
+        <section className="bg-white rounded-2xl shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] overflow-hidden">
+          <div className="px-4 py-3 border-b border-[var(--color-border-light)]">
+            <h3 className="text-sm font-semibold">API Key 配置</h3>
+            <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">Key 仅保存在本机，不上传服务器</p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {PROVIDERS.map((p) => (
+              <div key={p.value}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-sm">{p.icon}</span>
+                  <label className="text-xs font-medium text-[var(--color-text-secondary)]">{p.name} API Key</label>
+                  {!p.supportsVision && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">不支持拍照识别</span>
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span>模型</span>
-                  <span className="font-mono text-[var(--color-text-secondary)]">
-                    {providerInfo.models[providerInfo.provider as keyof typeof providerInfo.models]?.model || "—"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>图片识别(OCR)</span>
-                  <span className={providerInfo.supportsVision ? "text-correct" : "text-wrong"}>
-                    {providerInfo.supportsVision ? "支持" : "不支持"}
-                  </span>
+                <div className="relative">
+                  <input
+                    type={showKey[p.value] ? "text" : "password"}
+                    value={keys[p.value] || ""}
+                    onChange={(e) => setKeys((prev) => ({ ...prev, [p.value]: e.target.value }))}
+                    placeholder={p.placeholder}
+                    className="w-full px-3 py-2.5 pr-10 rounded-xl border border-[var(--color-border)] bg-gray-50 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-nebula-400/40 focus:border-nebula-400 transition-all"
+                  />
+                  <button
+                    onClick={() => setShowKey((prev) => ({ ...prev, [p.value]: !prev[p.value] }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  >
+                    {showKey[p.value] ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    )}
+                  </button>
                 </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
 
           <div className="px-4 pb-4">
-            <p className="text-[10px] text-[var(--color-text-tertiary)] leading-relaxed">
-              💡 切换 AI 引擎需要修改 <code className="bg-gray-100 px-1 rounded">.env.local</code> 中的
-              <code className="bg-gray-100 px-1 rounded">AI_PROVIDER</code> 和对应的 API Key，然后重启服务。
-            </p>
+            <button
+              onClick={handleSave}
+              className={cn(
+                "w-full h-11 rounded-xl font-semibold text-sm transition-all",
+                saved
+                  ? "bg-emerald-500 text-white"
+                  : "bg-nebula-gradient text-white shadow-lg shadow-nebula-500/20 active:scale-[0.98]"
+              )}
+            >
+              {saved ? "✅ 已保存" : "保存设置"}
+            </button>
           </div>
         </section>
 
-        {/* Learning Settings */}
-        <div className="bg-white rounded-2xl shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] divide-y divide-[var(--color-border-light)]">
-          <h3 className="px-4 py-3 text-xs font-semibold text-[var(--color-text-tertiary)] uppercase">学习设置</h3>
-          {[
-            { label: "年级", value: "初三" },
-            { label: "关注学科", value: "数学、物理、化学" },
-            { label: "每日练习量", value: "10题" },
-            { label: "复习提醒", value: "开启" },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center justify-between px-4 py-3.5">
-              <span className="text-sm">{item.label}</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm text-[var(--color-text-tertiary)]">{item.value}</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* 获取 Key 指引 */}
+        <section className="bg-nebula-50/60 rounded-2xl p-4 border border-nebula-100/60">
+          <h3 className="text-xs font-semibold text-nebula-800 mb-2">📋 如何获取 API Key</h3>
+          <div className="space-y-2 text-[11px] text-nebula-700/80">
+            <div>🔷 <strong>通义千问</strong>：<span className="text-nebula-600">bailian.console.aliyun.com</span> → 右上角 API Key</div>
+            <div>🔮 <strong>DeepSeek</strong>：<span className="text-nebula-600">platform.deepseek.com</span> → API Keys</div>
+            <div>⚡ <strong>MiniMax</strong>：<span className="text-nebula-600">platform.minimax.io</span> → 账户设置</div>
+            <div>🤖 <strong>Claude</strong>：<span className="text-nebula-600">console.anthropic.com</span> → API Keys</div>
+          </div>
+        </section>
 
-        {/* About */}
+        {/* 关于 */}
         <div className="bg-white rounded-2xl shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] divide-y divide-[var(--color-border-light)]">
           <h3 className="px-4 py-3 text-xs font-semibold text-[var(--color-text-tertiary)] uppercase">关于</h3>
           {[
             { label: "版本", value: "v0.1.0" },
-            { label: "AI 引擎", value: providerInfo?.label || "加载中..." },
             { label: "隐私政策", value: "" },
-            { label: "用户协议", value: "" },
           ].map((item) => (
             <div key={item.label} className="flex items-center justify-between px-4 py-3.5">
               <span className="text-sm">{item.label}</span>
-              <div className="flex items-center gap-1.5">
-                {item.value && <span className="text-sm text-[var(--color-text-tertiary)]">{item.value}</span>}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </div>
+              <span className="text-sm text-[var(--color-text-tertiary)]">{item.value}</span>
             </div>
           ))}
         </div>

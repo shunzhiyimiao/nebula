@@ -1,4 +1,5 @@
 import BottomNav from "@/components/layout/BottomNav";
+import { ScanProvider } from "@/contexts/ScanContext";
 
 export default function MainLayout({
   children,
@@ -6,12 +7,11 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen max-w-lg mx-auto relative">
-      {/* Page content */}
-      <main className="pb-safe">{children}</main>
-
-      {/* Bottom navigation */}
-      <BottomNav />
-    </div>
+    <ScanProvider>
+      <div className="min-h-screen max-w-lg mx-auto relative">
+        <main className="pb-safe">{children}</main>
+        <BottomNav />
+      </div>
+    </ScanProvider>
   );
 }

@@ -2,6 +2,25 @@
 
 import { useState, useCallback, useRef } from "react";
 import type { Subject, SolutionStep } from "@/types/question";
+import { clientCallAIStream } from "@/lib/ai/client-caller";
+
+function buildSystemPrompt(subject: string, hasError: boolean, grade?: string): string {
+  if (hasError) {
+    return `你是一位经验丰富的${subject}老师，专门辅导中小学生。${grade ? `学生年级: ${grade}` : ""}
+学生做了这道题但答错了，请先分析错误原因，再给出正确解法。
+数学公式用 $...$ 或 $$...$$ LaTeX格式，分步讲解标注 **Step N: 标题**。
+最后在末尾输出：
+===JSON_START===
+{"errorAnalysis":{"errorType":"...","reason":"...","correction":"..."},"steps":[{"order":1,"title":"...","content":"...","latex":"..."}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["..."],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
+===JSON_END===`;
+  }
+  return `你是一位经验丰富的${subject}老师，专门辅导中小学生。${grade ? `学生年级: ${grade}` : ""}
+请详细解答题目，数学公式用 $...$ 或 $$...$$ LaTeX格式，分步讲解标注 **Step N: 标题**。
+最后在末尾输出：
+===JSON_START===
+{"steps":[{"order":1,"title":"...","content":"...","latex":"..."}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["..."],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
+===JSON_END===`;
+}
 
 export interface SolverState {
   status: "idle" | "loading" | "streaming" | "done" | "error";
@@ -41,10 +60,7 @@ export function useSolver() {
       userAnswer?: string;
       options?: string[];
     }) => {
-      // 取消之前的请求
       abortRef.current?.abort();
-      const abortController = new AbortController();
-      abortRef.current = abortController;
 
       setState({
         status: "loading",
@@ -54,18 +70,18 @@ export function useSolver() {
       });
 
       try {
-        const response = await fetch("/api/scan/solve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(params),
-          signal: abortController.signal,
+        let userMessage = `请解答以下题目：\n\n${params.questionText}`;
+        if (params.questionLatex) userMessage += `\n\nLaTeX格式：${params.questionLatex}`;
+        if (params.options) userMessage += `\n\n选项：\n${params.options.join("\n")}`;
+        if (params.userAnswer) userMessage += `\n\n学生的答案：${params.userAnswer}`;
+
+        const stream = clientCallAIStream({
+          system: buildSystemPrompt(params.subject, !!params.userAnswer, params.grade),
+          messages: [{ role: "user", content: userMessage }],
+          maxTokens: 4096,
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const reader = response.body?.getReader();
+        const reader = stream.getReader();
         if (!reader) throw new Error("No reader");
 
         const decoder = new TextDecoder();

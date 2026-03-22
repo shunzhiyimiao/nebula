@@ -119,3 +119,5 @@ async function resolveRelatedIds(names: string[], subject: string): Promise<stri
   }
   return ids;
 }
+
+export function generateStaticParams() { return [{ id: "_" }]; }

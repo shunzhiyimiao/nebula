@@ -1,17 +1,11 @@
 /** @type {import('next').NextConfig} */
+const isCapacitorBuild = process.env.CAPACITOR_BUILD === "true";
+
 const nextConfig = {
+  ...(isCapacitorBuild ? { output: "export" } : {}),
+  trailingSlash: true,
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "*.r2.cloudflarestorage.com",
-      },
-    ],
-  },
-  experimental: {
-    serverActions: {
-      bodySizeLimit: "10mb", // 支持上传较大的拍照图片
-    },
+    unoptimized: true,
   },
 };
 

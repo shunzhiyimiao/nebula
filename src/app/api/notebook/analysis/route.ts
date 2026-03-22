@@ -1,8 +1,10 @@
+import { isDatabaseAvailable } from "@/lib/db-available";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 /** GET /api/notebook/analysis — 错题分析报告 */
 export async function GET(request: NextRequest) {
+  if (!isDatabaseAvailable()) return NextResponse.json({ data: [], success: true });
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get("userId") || "demo-user";
   const subject = searchParams.get("subject");
@@ -100,7 +102,7 @@ export async function GET(request: NextRequest) {
       if (q.masteryLevel === "MASTERED") existing.mastered++;
       weekMap.set(key, existing);
     }
-    for (const [week, data] of weekMap) {
+    for (const [week, data] of Array.from(weekMap)) {
       weeklyTrend.push({ week, ...data });
     }
 

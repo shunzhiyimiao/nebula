@@ -100,7 +100,7 @@ export async function POST(
       await prisma.question.update({
         where: { id: params.id },
         data: {
-          solution: result.structured,
+          solution: result.structured as any,
           solutionText: result.text,
           steps: (result.structured as any).steps || question.steps,
           errorReason: (result.structured as any).errorAnalysis?.reason || question.errorReason,
@@ -140,3 +140,5 @@ export async function DELETE(
     return NextResponse.json({ error: "移除失败" }, { status: 500 });
   }
 }
+
+export function generateStaticParams() { return [{ id: "_" }]; }

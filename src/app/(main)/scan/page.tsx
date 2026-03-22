@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useRef, useCallback } from "react";
+import { useScanContext } from "@/contexts/ScanContext";
 import PageHeader from "@/components/layout/PageHeader";
 import SolutionStream from "@/components/scan/SolutionStream";
 import StepByStep from "@/components/scan/StepByStep";
 import KnowledgePopover from "@/components/knowledge/KnowledgePopover";
-import { useSolver } from "@/hooks/useSolver";
+import MathRenderer from "@/components/scan/MathRenderer";
 import { cn } from "@/lib/utils";
 import type { Subject } from "@/types/question";
-
-type Stage = "upload" | "preview" | "ocr" | "solving" | "result";
 
 const SUBJECTS = [
   { value: "MATH" as Subject, label: "📐 数学" },
@@ -21,65 +20,54 @@ const SUBJECTS = [
 ];
 
 export default function ScanPage() {
-  const [stage, setStage] = useState<Stage>("upload");
-  const [imageData, setImageData] = useState<string | null>(null);
+  const {
+    stage, setStage,
+    imageData, setImageData,
+    ocrResult, ocrLoading, ocrError,
+    selectedSubject, setSelectedSubject,
+    userAnswer, setUserAnswer,
+    editedQuestion, setEditedQuestion,
+    solver,
+    handleOcr,
+    handleReset,
+  } = useScanContext();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const [ocrResult, setOcrResult] = useState<{
-    questionText: string;
-    questionLatex: string | null;
-    questionType: string;
-    subject: Subject;
-    options: string[] | null;
-    confidence: number;
-  } | null>(null);
-  const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrError, setOcrError] = useState<string | null>(null);
-
-  const [selectedSubject, setSelectedSubject] = useState<Subject>("MATH");
-  const [userAnswer, setUserAnswer] = useState("");
-  const [editedQuestion, setEditedQuestion] = useState("");
-
-  const solver = useSolver();
+  const compressImage = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1280;
+          let { width, height } = img;
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+            else { width = Math.round(width * MAX / height); height = MAX; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.8));
+        };
+        img.onerror = reject;
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }, []);
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setImageData(e.target?.result as string);
+    compressImage(file).then((compressed) => {
+      setImageData(compressed);
       setStage("preview");
-      setOcrResult(null);
-      setOcrError(null);
-    };
-    reader.readAsDataURL(file);
-  }, []);
-
-  const handleOcr = useCallback(async () => {
-    if (!imageData) return;
-    setOcrLoading(true);
-    setOcrError(null);
-    setStage("ocr");
-
-    try {
-      const res = await fetch("/api/scan/ocr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: imageData, mediaType: "image/jpeg" }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "识别失败");
-
-      setOcrResult(json.data);
-      setEditedQuestion(json.data.questionText);
-      if (json.data.subject) setSelectedSubject(json.data.subject as Subject);
-      setStage("preview");
-    } catch (err) {
-      setOcrError((err as Error).message);
-      setStage("preview");
-    } finally {
-      setOcrLoading(false);
-    }
-  }, [imageData]);
+    });
+  }, [compressImage, setImageData, setStage]);
 
   const handleSolve = useCallback(async () => {
     const question = editedQuestion || ocrResult?.questionText;
@@ -96,12 +84,11 @@ export default function ScanPage() {
     });
 
     setStage("result");
-  }, [editedQuestion, ocrResult, selectedSubject, userAnswer, solver]);
+  }, [editedQuestion, ocrResult, selectedSubject, userAnswer, solver, setStage]);
 
   const handleSaveToNotebook = useCallback(async () => {
     const question = editedQuestion || ocrResult?.questionText;
     if (!question) return;
-
     try {
       await fetch("/api/scan/save", {
         method: "POST",
@@ -128,28 +115,19 @@ export default function ScanPage() {
     }
   }, [editedQuestion, ocrResult, selectedSubject, userAnswer, solver]);
 
-  const handleReset = useCallback(() => {
-    setStage("upload");
-    setImageData(null);
-    setOcrResult(null);
-    setOcrError(null);
-    setUserAnswer("");
-    setEditedQuestion("");
-    solver.reset();
-  }, [solver]);
-
   return (
     <div>
       <PageHeader
         title="拍照解题"
         subtitle={
-          stage === "upload" ? "拍照或上传题目图片"
+          stage === "upload" ? "拍照或输入题目"
+            : stage === "text-input" ? "输入题目文字"
             : stage === "solving" ? "AI 正在解题..."
             : stage === "result" ? "解题完成"
             : "确认题目信息"
         }
         showBack={stage !== "upload"}
-        rightAction={stage !== "upload" ? (
+        rightAction={stage !== "upload" && stage !== "text-input" ? (
           <button onClick={handleReset} className="text-xs text-nebula-500 font-medium">重新拍照</button>
         ) : undefined}
       />
@@ -159,35 +137,46 @@ export default function ScanPage() {
         {/* ===== UPLOAD ===== */}
         {stage === "upload" && (
           <>
-            <div className="rounded-3xl border-2 border-dashed border-[var(--color-border)] bg-white/50 p-8 text-center hover:border-nebula-300 hover:bg-nebula-50/30 transition-all">
-              <div className="flex flex-col items-center gap-4">
-                <div className="w-20 h-20 rounded-3xl bg-nebula-50 flex items-center justify-center">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-nebula-500">
+            <div className="flex gap-3">
+              <button
+                onClick={() => { if (cameraInputRef.current) { cameraInputRef.current.value = ""; cameraInputRef.current.click(); } }}
+                className="flex-1 rounded-2xl border-2 border-dashed border-nebula-200 bg-white/50 p-6 flex flex-col items-center gap-3 hover:border-nebula-400 hover:bg-nebula-50/40 active:scale-[0.97] transition-all"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-nebula-50 flex items-center justify-center">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-nebula-500">
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                     <circle cx="12" cy="13" r="4" />
                   </svg>
                 </div>
-                <div>
-                  <p className="font-semibold">拍照或上传题目</p>
-                  <p className="text-sm text-[var(--color-text-tertiary)] mt-1">支持手写题、印刷题、数学公式</p>
+                <div className="text-center">
+                  <p className="font-semibold text-sm">拍照上传</p>
+                  <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">拍题目图片识别</p>
                 </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      const input = document.createElement("input");
-                      input.type = "file"; input.accept = "image/*"; input.capture = "environment";
-                      input.onchange = (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) handleFileSelect(f); };
-                      input.click();
-                    }}
-                    className="h-11 px-6 rounded-xl bg-nebula-gradient text-white font-medium text-sm shadow-lg shadow-nebula-500/20 active:scale-[0.97] transition-all"
-                  >📷 拍照</button>
-                  <button onClick={() => fileInputRef.current?.click()} className="h-11 px-6 rounded-xl bg-white border border-[var(--color-border)] font-medium text-sm active:scale-[0.97] transition-all">
-                    📁 相册
-                  </button>
+              </button>
+
+              <button
+                onClick={() => { setStage("text-input"); setEditedQuestion(""); }}
+                className="flex-1 rounded-2xl border-2 border-dashed border-aurora-200 bg-white/50 p-6 flex flex-col items-center gap-3 hover:border-aurora-400 hover:bg-aurora-50/40 active:scale-[0.97] transition-all"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-aurora-50 flex items-center justify-center">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-aurora-500">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
                 </div>
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }} />
-              </div>
+                <div className="text-center">
+                  <p className="font-semibold text-sm">直接输入</p>
+                  <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">手动输入题目文字</p>
+                </div>
+              </button>
             </div>
+
+            <button onClick={() => fileInputRef.current?.click()} className="w-full h-11 rounded-xl bg-white border border-[var(--color-border)] font-medium text-sm active:scale-[0.97] transition-all text-[var(--color-text-secondary)]">
+              📁 从相册选择
+            </button>
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }} />
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }} />
+
             <div className="bg-nebula-50/50 rounded-2xl p-4 border border-nebula-100/60">
               <h3 className="text-sm font-semibold text-nebula-800 mb-2">📌 拍照技巧</h3>
               <div className="space-y-1.5 text-xs text-nebula-700/80">
@@ -199,10 +188,62 @@ export default function ScanPage() {
           </>
         )}
 
+        {/* ===== TEXT INPUT ===== */}
+        {stage === "text-input" && (
+          <>
+            <div>
+              <label className="text-sm font-medium text-[var(--color-text-secondary)] mb-2 block">题目内容</label>
+              <textarea
+                value={editedQuestion}
+                onChange={(e) => setEditedQuestion(e.target.value)}
+                placeholder="在这里输入题目..."
+                rows={6}
+                autoFocus
+                className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-nebula-400/40 focus:border-nebula-400 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-[var(--color-text-secondary)] mb-2 block">学科</label>
+              <div className="flex flex-wrap gap-2">
+                {SUBJECTS.map((s) => (
+                  <button key={s.value} onClick={() => setSelectedSubject(s.value)}
+                    className={cn("h-9 px-4 rounded-xl text-sm font-medium border transition-all",
+                      selectedSubject === s.value ? "bg-nebula-600 text-white border-nebula-600 shadow-sm" : "bg-white border-[var(--color-border)] hover:border-nebula-300"
+                    )}>{s.label}</button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-[var(--color-text-secondary)] mb-2 block">你的答案（可选）</label>
+              <textarea value={userAnswer} onChange={(e) => setUserAnswer(e.target.value)} placeholder="输入你写的答案..." rows={2}
+                className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-nebula-400/40 focus:border-nebula-400 transition-all" />
+            </div>
+
+            <button
+              onClick={async () => {
+                if (!editedQuestion.trim()) return;
+                setStage("solving");
+                await solver.solve({ questionText: editedQuestion, subject: selectedSubject, userAnswer: userAnswer || undefined });
+                setStage("result");
+              }}
+              disabled={!editedQuestion.trim()}
+              className={cn("w-full h-12 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2",
+                editedQuestion.trim() ? "bg-nebula-gradient text-white shadow-lg shadow-nebula-500/25 active:scale-[0.98]" : "bg-gray-200 text-gray-400 cursor-not-allowed"
+              )}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
+              AI 解题
+            </button>
+          </>
+        )}
+
         {/* ===== PREVIEW / OCR ===== */}
         {(stage === "preview" || stage === "ocr") && imageData && (
           <>
             <div className="relative rounded-2xl overflow-hidden bg-gray-100 border border-[var(--color-border-light)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={imageData} alt="题目" className="w-full object-contain max-h-64" />
             </div>
 
@@ -223,7 +264,6 @@ export default function ScanPage() {
 
             {!ocrLoading && (
               <>
-                {/* 题目内容 */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium text-[var(--color-text-secondary)]">题目内容</label>
@@ -240,6 +280,11 @@ export default function ScanPage() {
                     rows={4}
                     className="w-full px-4 py-3 rounded-xl border border-[var(--color-border)] bg-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-nebula-400/40 focus:border-nebula-400 transition-all"
                   />
+                  {ocrResult?.questionLatex && (
+                    <div className="mt-2 px-3 py-2 rounded-lg bg-nebula-50 border border-nebula-100 text-sm">
+                      <MathRenderer content={`$${ocrResult.questionLatex}$`} />
+                    </div>
+                  )}
                 </div>
 
                 <div>

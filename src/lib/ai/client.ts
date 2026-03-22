@@ -40,7 +40,7 @@ async function callClaude(params: {
     system: params.system,
     messages: params.messages.map((m: any) => ({ role: m.role, content: m.content })),
   });
-  const textBlock = response.content.find((b: any) => b.type === "text");
+  const textBlock = response.content.find((b: any) => b.type === "text") as any;
   return textBlock?.text || "";
 }
 
@@ -95,7 +95,7 @@ async function callClaudeWithImage(params: {
       ],
     }],
   });
-  const textBlock = response.content.find((b: any) => b.type === "text");
+  const textBlock = response.content.find((b: any) => b.type === "text") as any;
   return textBlock?.text || "";
 }
 
