@@ -46,20 +46,14 @@ export default function RegisterPage() {
         return;
       }
       // Auto login after register
-      const loginRes = await signIn("credentials", {
+      await signIn("credentials", {
         email: form.email,
         password: form.password,
-        redirect: false,
+        redirectTo: "/home",
       });
-      if (loginRes?.error) {
-        router.push("/login");
-      } else {
-        router.push("/home");
-        router.refresh();
-      }
-    } catch {
+    } catch (err: any) {
+      if (err?.message === "NEXT_REDIRECT") return;
       setError("注册失败，请重试");
-    } finally {
       setLoading(false);
     }
   };
