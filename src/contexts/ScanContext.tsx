@@ -128,7 +128,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
 
 字段说明：
 - questionText：题目的纯文本描述，公式用自然语言表达（如"1/2 x - 1 = 4/5 - y"），不含$符号
-- questionLatex：题目的完整LaTeX版本，每个数学公式用$...$包裹（行内）或$$...$$包裹（独立行），例如："解方程组：$\\frac{1}{2}x - 1 = \\frac{4}{5} - y$"；如无数学公式则为null
+- questionLatex：题目的完整LaTeX版本，【所有】数学表达式（包括简单的方程、多项式、数字运算）都必须用$...$包裹，例如："解方程组：$\\frac{1}{2}x - 1 = \\frac{4}{5} - y$"，又如："$(x-3)(x-14)+10=0$"；如题目完全无数学内容则为null
 - questionType：CHOICE（选择）|FILL_BLANK（填空）|SHORT_ANSWER（简答）|CALCULATION（计算/解答）|OTHER
 - subject：MATH|CHINESE|ENGLISH|PHYSICS|CHEMISTRY|BIOLOGY|HISTORY|GEOGRAPHY|POLITICS
 - options：选择题选项数组如["A. ...", "B. ..."]，非选择题为null
