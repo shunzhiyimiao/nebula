@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { solveQuestionStream } from "@/lib/ai/solver";
 import type { Subject } from "@/types/question";
