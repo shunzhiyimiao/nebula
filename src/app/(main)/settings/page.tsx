@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import PageHeader from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
 import {
@@ -17,6 +17,39 @@ const PROVIDERS = Object.entries(PROVIDER_CONFIG).map(([value, cfg]) => ({
   value: value as ClientProvider,
   ...cfg,
 }));
+
+const PROVIDER_ICONS: Record<string, React.ReactNode> = {
+  qwen: (
+    <svg viewBox="0 0 36 36" fill="none" className="w-9 h-9">
+      <rect width="36" height="36" rx="9" fill="#615CE8"/>
+      <path d="M18 8c-5.523 0-10 4.477-10 10s4.477 10 10 10 10-4.477 10-10S23.523 8 18 8zm0 3a7 7 0 0 1 6.929 6H11.07A7 7 0 0 1 18 11zm0 14a7 7 0 0 1-6.929-6h13.858A7 7 0 0 1 18 25z" fill="white"/>
+      <circle cx="18" cy="18" r="2.5" fill="white"/>
+    </svg>
+  ),
+  deepseek: (
+    <svg viewBox="0 0 36 36" fill="none" className="w-9 h-9">
+      <rect width="36" height="36" rx="9" fill="#0066FF"/>
+      <path d="M10 22c0-4.418 3.582-8 8-8 2.21 0 4.21.896 5.657 2.343" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+      <path d="M26 14c0 4.418-3.582 8-8 8-2.21 0-4.21-.896-5.657-2.343" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+      <circle cx="26" cy="14" r="2" fill="#00CFFF"/>
+      <circle cx="10" cy="22" r="2" fill="#00CFFF"/>
+    </svg>
+  ),
+  minimax: (
+    <svg viewBox="0 0 36 36" fill="none" className="w-9 h-9">
+      <rect width="36" height="36" rx="9" fill="#0A0A0A"/>
+      <path d="M8 24V12l5 8 5-8v12" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M23 12v12M28 12v12" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+    </svg>
+  ),
+  claude: (
+    <svg viewBox="0 0 36 36" fill="none" className="w-9 h-9">
+      <rect width="36" height="36" rx="9" fill="#CC785C"/>
+      <path d="M13 26l5-16 5 16" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M15 21h6" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+    </svg>
+  ),
+};
 
 export default function SettingsPage() {
   const [provider, setProvider] = useState<ClientProvider>("qwen");
@@ -71,7 +104,7 @@ export default function SettingsPage() {
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">{p.icon}</span>
+                    <span className="flex-shrink-0">{PROVIDER_ICONS[p.value]}</span>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">{p.name}</span>
@@ -108,7 +141,7 @@ export default function SettingsPage() {
             {PROVIDERS.map((p) => (
               <div key={p.value}>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <span className="text-sm">{p.icon}</span>
+                  <span className="flex-shrink-0 scale-75 origin-left">{PROVIDER_ICONS[p.value]}</span>
                   <label className="text-xs font-medium text-[var(--color-text-secondary)]">{p.name} API Key</label>
                   {!p.supportsVision && (
                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">不支持拍照识别</span>
