@@ -1,12 +1,17 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "未登录" }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const {
-      userId,
       subject,
       gradeLevel,
       questionType,
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     const question = await prisma.question.create({
       data: {
-        userId: userId || "demo-user", // TODO: 从 session 获取
+        userId: session.user.id,
         subject,
         gradeLevel,
         questionType: questionType || "OTHER",

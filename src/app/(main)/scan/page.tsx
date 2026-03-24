@@ -86,11 +86,14 @@ export default function ScanPage() {
     setStage("result");
   }, [editedQuestion, ocrResult, selectedSubject, userAnswer, solver, setStage]);
 
+  const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
+
   const handleSaveToNotebook = useCallback(async () => {
     const question = editedQuestion || ocrResult?.questionText;
     if (!question) return;
+    setSaveStatus("saving");
     try {
-      await fetch("/api/scan/save", {
+      const res = await fetch("/api/scan/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -110,8 +113,16 @@ export default function ScanPage() {
           knowledgePoints: solver.structuredData?.knowledgePoints || [],
         }),
       });
+      if (res.ok) {
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 2500);
+      } else {
+        setSaveStatus("error");
+        setTimeout(() => setSaveStatus("idle"), 2500);
+      }
     } catch {
-      // TODO: toast error
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 2500);
     }
   }, [editedQuestion, ocrResult, selectedSubject, userAnswer, solver]);
 
@@ -354,8 +365,17 @@ export default function ScanPage() {
 
             {solver.status === "done" && (
               <div className="flex gap-3 pt-2">
-                <button onClick={handleSaveToNotebook} className="flex-1 h-11 rounded-xl bg-aurora-50 text-aurora-700 font-medium text-sm border border-aurora-200/60 hover:bg-aurora-100 transition-all flex items-center justify-center gap-1.5">
-                  📝 加入错题本
+                <button
+                  onClick={handleSaveToNotebook}
+                  disabled={saveStatus === "saving" || saveStatus === "saved"}
+                  className={cn(
+                    "flex-1 h-11 rounded-xl font-medium text-sm border transition-all flex items-center justify-center gap-1.5",
+                    saveStatus === "saved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    saveStatus === "error" ? "bg-red-50 text-red-600 border-red-200" :
+                    "bg-aurora-50 text-aurora-700 border-aurora-200/60 hover:bg-aurora-100"
+                  )}
+                >
+                  {saveStatus === "saving" ? "保存中..." : saveStatus === "saved" ? "✅ 已保存" : saveStatus === "error" ? "❌ 保存失败" : "📝 加入错题本"}
                 </button>
                 <button onClick={handleReset} className="flex-1 h-11 rounded-xl bg-nebula-gradient text-white font-medium text-sm shadow-sm flex items-center justify-center gap-1.5">
                   📸 再来一题
