@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 /**
  * 渲染包含 LaTeX 的文本
@@ -88,7 +88,25 @@ function parseContent(content: string): string {
 }
 
 export default function MathRenderer({ content, className }: MathRendererProps) {
-  const html = useMemo(() => parseContent(content), [content]);
+  const [katexReady, setKatexReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ((window as unknown as { katex?: unknown }).katex) {
+      setKatexReady(true);
+      return;
+    }
+    const timer = setInterval(() => {
+      if ((window as unknown as { katex?: unknown }).katex) {
+        clearInterval(timer);
+        setKatexReady(true);
+      }
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const html = useMemo(() => parseContent(content), [content, katexReady]);
 
   return (
     <div
@@ -108,9 +126,27 @@ export function Formula({
   display?: boolean;
   className?: string;
 }) {
+  const [katexReady, setKatexReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ((window as unknown as { katex?: unknown }).katex) {
+      setKatexReady(true);
+      return;
+    }
+    const timer = setInterval(() => {
+      if ((window as unknown as { katex?: unknown }).katex) {
+        clearInterval(timer);
+        setKatexReady(true);
+      }
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const html = useMemo(
     () => renderLatexToHtml(latex, display),
-    [latex, display]
+    [latex, display, katexReady]
   );
 
   if (display) {

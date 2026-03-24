@@ -124,10 +124,26 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     try {
       const base64 = imageData.replace(/^data:image\/\w+;base64,/, "");
       const raw = await clientCallAIWithImage({
-        system: `你是题目识别系统，从图片中提取题目内容，严格按JSON格式输出，不要输出其他内容。
-注意：questionText必须是纯文本，不含任何LaTeX或$符号；数学公式只放在questionLatex字段中。
-{"questionText":"题目纯文本无公式符号","questionLatex":"完整LaTeX版本(无公式则null)","questionType":"CHOICE|FILL_BLANK|SHORT_ANSWER|CALCULATION|OTHER","subject":"MATH|CHINESE|ENGLISH|PHYSICS|CHEMISTRY|BIOLOGY|HISTORY|GEOGRAPHY|POLITICS","options":["A...."]或null,"confidence":0.95}`,
-        prompt: "请识别图片中的题目，按JSON格式输出。questionText只能是纯文本。",
+        system: `你是专业的题目识别系统，精确提取图片中的题目内容，严格按JSON格式输出，不输出任何其他内容。
+
+字段说明：
+- questionText：题目的纯文本描述，公式用自然语言表达（如"1/2 x - 1 = 4/5 - y"），不含$符号
+- questionLatex：题目的完整LaTeX版本，每个数学公式用$...$包裹（行内）或$$...$$包裹（独立行），例如："解方程组：$\\frac{1}{2}x - 1 = \\frac{4}{5} - y$"；如无数学公式则为null
+- questionType：CHOICE（选择）|FILL_BLANK（填空）|SHORT_ANSWER（简答）|CALCULATION（计算/解答）|OTHER
+- subject：MATH|CHINESE|ENGLISH|PHYSICS|CHEMISTRY|BIOLOGY|HISTORY|GEOGRAPHY|POLITICS
+- options：选择题选项数组如["A. ...", "B. ..."]，非选择题为null
+- confidence：识别置信度0-1
+
+LaTeX规范：
+- 分数用\\frac{分子}{分母}
+- 上标用^{}，下标用_{}
+- 根号用\\sqrt{}
+- 乘号用\\times，除号用\\div
+- 方程组用\\begin{cases}...\\end{cases}
+
+输出格式（严格JSON）：
+{"questionText":"...","questionLatex":"...","questionType":"...","subject":"...","options":null,"confidence":0.95}`,
+        prompt: "请仔细识别图片中的全部题目内容，特别注意数学公式的准确性，按JSON格式输出。",
         imageBase64: base64,
         mediaType: "image/jpeg",
         maxTokens: 4096,

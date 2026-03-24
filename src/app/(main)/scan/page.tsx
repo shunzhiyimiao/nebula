@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState } from "react";
 import { useScanContext } from "@/contexts/ScanContext";
 import PageHeader from "@/components/layout/PageHeader";
 import SolutionStream from "@/components/scan/SolutionStream";
@@ -86,7 +86,7 @@ export default function ScanPage() {
     setStage("result");
   }, [editedQuestion, ocrResult, selectedSubject, userAnswer, solver, setStage]);
 
-  const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const handleSaveToNotebook = useCallback(async () => {
     const question = editedQuestion || ocrResult?.questionText;
@@ -293,7 +293,7 @@ export default function ScanPage() {
                   />
                   {ocrResult?.questionLatex && (
                     <div className="mt-2 px-3 py-2 rounded-lg bg-nebula-50 border border-nebula-100 text-sm">
-                      <MathRenderer content={`$${ocrResult.questionLatex}$`} />
+                      <MathRenderer content={ocrResult.questionLatex} />
                     </div>
                   )}
                 </div>
