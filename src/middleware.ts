@@ -9,10 +9,16 @@ export async function middleware(request: NextRequest) {
   const isProtected = PROTECTED.some((p) => pathname.startsWith(p));
 
   if (isProtected) {
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
+    const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
+    const isSecure = request.url.startsWith("https://");
+
+    // NextAuth v5 changed cookie name from "next-auth.session-token" to "authjs.session-token"
+    const cookieName = isSecure
+      ? "__Secure-authjs.session-token"
+      : "authjs.session-token";
+
+    const token = await getToken({ req: request, secret, cookieName });
+
     if (!token) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("callbackUrl", pathname);
