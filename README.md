@@ -61,10 +61,21 @@ src/
 ## 开发阶段
 
 - [x] Phase 1: 项目骨架 + 页面框架
-- [ ] Phase 2: 拍照解题 (OCR + AI)
+- [x] Phase 2: 拍照解题 (OCR + AI)
 - [ ] Phase 3: 知识卡片
 - [ ] Phase 4: 错题本
 - [ ] Phase 5: 智能练习
 - [ ] Phase 6: 打印导出
 - [ ] Phase 7: 学习报告
 - [ ] Phase 8: 上线
+
+## 更新日志
+
+### 2026-03-25
+- 实现用户注册 / 登录系统（NextAuth v5 + bcryptjs）
+- 修复 Vercel 生产环境 MissingCSRF 错误（添加 `trustHost: true`）
+- 修复 middleware cookie 名称（NextAuth v5 改为 `authjs.session-token`）
+- 拍照解题保存错题时使用真实 userId
+- 修复 KaTeX 异步加载导致公式不渲染的问题（defer 脚本 + useMemo 缓存冲突）
+- 优化 OCR 系统提示词，要求所有数学表达式统一用 LaTeX `$...$` 包裹
+- 修复 `questionLatex` 被双重包裹 `$...$` 导致渲染错误的问题
