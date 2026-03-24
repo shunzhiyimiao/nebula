@@ -16,21 +16,19 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await signIn("credentials", {
+      const res = await signIn("credentials", {
         email: form.email,
         password: form.password,
-        redirectTo: "/home",
+        redirect: false,
       });
-    } catch (err: any) {
-      // NextAuth v5 在凭证错误时抛出异常
-      if (err?.type === "CredentialsSignin" || err?.message?.includes("CredentialsSignin")) {
+      if (res?.error) {
         setError("邮箱或密码错误");
-      } else if (err?.message === "NEXT_REDIRECT") {
-        // 正常跳转，忽略
-        return;
+        setLoading(false);
       } else {
-        setError("邮箱或密码错误");
+        window.location.href = "/home";
       }
+    } catch {
+      setError("登录失败，请重试");
       setLoading(false);
     }
   };

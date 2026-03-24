@@ -49,8 +49,9 @@ export default function RegisterPage() {
       await signIn("credentials", {
         email: form.email,
         password: form.password,
-        redirectTo: "/home",
+        redirect: false,
       });
+      window.location.href = "/home";
     } catch (err: any) {
       if (err?.message === "NEXT_REDIRECT") return;
       setError("注册失败，请重试");
