@@ -16,6 +16,7 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
+  passwordHash  String?
   grade         Grade?
   subjects      Subject[] @default([])
   createdAt     DateTime  @default(now())

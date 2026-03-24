@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { signOut } from "next-auth/react";
 import PageHeader from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
 import {
@@ -20,33 +21,65 @@ const PROVIDERS = Object.entries(PROVIDER_CONFIG).map(([value, cfg]) => ({
 
 const PROVIDER_ICONS: Record<string, React.ReactNode> = {
   qwen: (
-    <svg viewBox="0 0 36 36" fill="none" className="w-9 h-9">
-      <rect width="36" height="36" rx="9" fill="#615CE8"/>
-      <path d="M18 8c-5.523 0-10 4.477-10 10s4.477 10 10 10 10-4.477 10-10S23.523 8 18 8zm0 3a7 7 0 0 1 6.929 6H11.07A7 7 0 0 1 18 11zm0 14a7 7 0 0 1-6.929-6h13.858A7 7 0 0 1 18 25z" fill="white"/>
-      <circle cx="18" cy="18" r="2.5" fill="white"/>
+    <svg viewBox="0 0 200 200" fill="none" className="w-9 h-9" xmlns="http://www.w3.org/2000/svg">
+      <path d="M174.82 108.75L155.38 75L165.64 57.75C166.46 56.31 166.46 54.53 165.64 53.09L155.38 35.84C154.86 34.91 153.87 34.33 152.78 34.33H114.88L106.14 19.03C105.62 18.1 104.63 17.52 103.54 17.52H83.3C82.21 17.52 81.22 18.1 80.7 19.03L61.26 52.77H41.02C39.93 52.77 38.94 53.35 38.42 54.28L28.16 71.53C27.34 72.97 27.34 74.75 28.16 76.19L45.52 107.5L36.78 122.8C35.96 124.24 35.96 126.02 36.78 127.46L47.04 144.71C47.56 145.64 48.55 146.22 49.64 146.22H87.54L96.28 161.52C96.8 162.45 97.79 163.03 98.88 163.03H119.12C120.21 163.03 121.2 162.45 121.72 161.52L141.16 127.78H158.52C159.61 127.78 160.6 127.2 161.12 126.27L171.38 109.02C172.2 107.58 172.2 105.8 171.38 104.36L174.82 108.75Z" fill="url(#qwen_grad0)"/>
+      <path d="M119.12 163.03H98.88L87.54 144.71H49.64L61.26 126.39H80.7L38.42 55.29H61.26L83.3 19.03L93.56 37.35L83.3 55.29H161.58L151.32 72.54L170.76 106.28H151.32L141.16 88.34L101.18 163.03H119.12Z" fill="white"/>
+      <path d="M127.86 79.83H76.14L101.18 122.11L127.86 79.83Z" fill="url(#qwen_grad1)"/>
+      <defs>
+        <radialGradient id="qwen_grad0" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(100 100) rotate(90) scale(100)">
+          <stop stopColor="#665CEE"/>
+          <stop offset="1" stopColor="#332E91"/>
+        </radialGradient>
+        <radialGradient id="qwen_grad1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(100 100) rotate(90) scale(100)">
+          <stop stopColor="#665CEE"/>
+          <stop offset="1" stopColor="#332E91"/>
+        </radialGradient>
+      </defs>
     </svg>
   ),
   deepseek: (
     <svg viewBox="0 0 36 36" fill="none" className="w-9 h-9">
-      <rect width="36" height="36" rx="9" fill="#0066FF"/>
-      <path d="M10 22c0-4.418 3.582-8 8-8 2.21 0 4.21.896 5.657 2.343" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-      <path d="M26 14c0 4.418-3.582 8-8 8-2.21 0-4.21-.896-5.657-2.343" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-      <circle cx="26" cy="14" r="2" fill="#00CFFF"/>
-      <circle cx="10" cy="22" r="2" fill="#00CFFF"/>
+      <rect width="36" height="36" rx="8" fill="white"/>
+      <defs>
+        <linearGradient id="ds_stroke" x1="0" y1="0" x2="1" y2="1">
+          <stop stopColor="#4D80F0"/>
+          <stop offset="1" stopColor="#C030DF"/>
+        </linearGradient>
+        <linearGradient id="ds_fill" x1="0" y1="0" x2="1" y2="1">
+          <stop stopColor="#D8E8FF"/>
+          <stop offset="1" stopColor="#F0D5FF"/>
+        </linearGradient>
+      </defs>
+      <path fill="url(#ds_fill)" stroke="url(#ds_stroke)" strokeWidth="1.8" strokeLinecap="round" d="M22 7C24 4 27 3 29 5C30 7 29 9 27 9C25 9 23 8 22 7Z"/>
+      <path fill="url(#ds_fill)" stroke="url(#ds_stroke)" strokeWidth="1.8" strokeLinecap="round" d="M25 11C27 9 30 9 31 11C32 13 29 15 27 14C26 12 24 12 25 11Z"/>
+      <path fill="url(#ds_fill)" stroke="url(#ds_stroke)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" d="M11 7C14 4 18 3 22 6C23 8 22 9 20 9C24 9 27 12 28 16C29 20 28 25 25 28C22 31 18 32 14 31C10 31 7 29 6 26C4 23 4 18 6 14C4 11 4 8 6 7C8 5 10 6 11 7Z"/>
+      <path fill="none" stroke="url(#ds_stroke)" strokeWidth="1.8" strokeLinecap="round" d="M7 19C9 14 14 12 19 14C23 16 24 21 22 25"/>
+      <circle cx="23" cy="16" r="1.3" fill="url(#ds_stroke)"/>
+      <circle cx="22.6" cy="15.5" r="0.5" fill="white" fillOpacity="0.8"/>
     </svg>
   ),
   minimax: (
     <svg viewBox="0 0 36 36" fill="none" className="w-9 h-9">
-      <rect width="36" height="36" rx="9" fill="#0A0A0A"/>
-      <path d="M8 24V12l5 8 5-8v12" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M23 12v12M28 12v12" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+      <rect width="36" height="36" rx="8" fill="white"/>
+      <defs>
+        <linearGradient id="mm_grad" x1="0" y1="0" x2="1" y2="0">
+          <stop stopColor="#C2327A"/>
+          <stop offset="1" stopColor="#E87542"/>
+        </linearGradient>
+      </defs>
+      <path
+        stroke="url(#mm_grad)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        fill="none"
+        d="M3 18L3 24A2 2 0 0 1 7 24L7 11A2 2 0 0 0 11 11L11 28A2 2 0 0 1 15 28L15 7A2 2 0 0 0 19 7L19 28A2 2 0 0 1 23 28L23 9A2 2 0 0 0 27 9L27 24A2 2 0 0 1 31 24L31 16"
+      />
     </svg>
   ),
   claude: (
     <svg viewBox="0 0 36 36" fill="none" className="w-9 h-9">
-      <rect width="36" height="36" rx="9" fill="#CC785C"/>
-      <path d="M13 26l5-16 5 16" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M15 21h6" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+      <rect width="36" height="36" rx="7" fill="#C8956C"/>
+      <text x="18" y="26" textAnchor="middle" fill="#1A1A1A" fontSize="20" fontWeight="900" fontFamily="Arial, Helvetica, sans-serif">AI</text>
     </svg>
   ),
 };
@@ -209,6 +242,14 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
+
+        {/* 退出登录 */}
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="w-full h-11 rounded-xl border border-red-200 text-red-500 font-medium text-sm bg-white active:scale-[0.98] transition-all"
+        >
+          退出登录
+        </button>
 
         <div className="h-8" />
       </div>

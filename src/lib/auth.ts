@@ -1,11 +1,12 @@
 import NextAuth from "next-auth";
-import type { NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { authConfig } from "./auth.config";
 
-export const authConfig: NextAuthConfig = {
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  ...authConfig,
   providers: [
-    // MVP阶段先用邮箱+密码登录，后续加微信/Google
     CredentialsProvider({
       name: "邮箱登录",
       credentials: {
@@ -13,21 +14,24 @@ export const authConfig: NextAuthConfig = {
         password: { label: "密码", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email) return null;
-
-        // TODO: 正式环境用 bcrypt 对比密码
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        });
-
-        if (!user) return null;
-        return { id: user.id, name: user.name, email: user.email, image: user.image };
+        if (!credentials?.email || !credentials?.password) return null;
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email as string },
+          });
+          if (!user?.passwordHash) return null;
+          const isValid = await bcrypt.compare(
+            credentials.password as string,
+            user.passwordHash
+          );
+          if (!isValid) return null;
+          return { id: user.id, name: user.name ?? "用户", email: user.email };
+        } catch {
+          return null;
+        }
       },
     }),
   ],
-  pages: {
-    signIn: "/login",
-  },
   callbacks: {
     async session({ session, token }) {
       if (token.sub && session.user) {
@@ -36,15 +40,9 @@ export const authConfig: NextAuthConfig = {
       return session;
     },
     async jwt({ token, user }) {
-      if (user) {
-        token.sub = user.id;
-      }
+      if (user) token.sub = user.id;
       return token;
     },
   },
-  session: {
-    strategy: "jwt",
-  },
-};
-
-export const { handlers, signIn, signOut, auth } = NextAuth(authConfig);
+  session: { strategy: "jwt" },
+});

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import SessionProviderWrapper from "@/components/SessionProviderWrapper";
 
 export const metadata: Metadata = {
   title: "Nebula — 智能学习平台",
@@ -35,7 +36,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-mesh antialiased">
-        {children}
+        <SessionProviderWrapper>{children}</SessionProviderWrapper>
       </body>
     </html>
   );
