@@ -79,6 +79,7 @@ export default function NotebookPage() {
     fetch(`/api/notebook?${params}`)
       .then((r) => r.json())
       .then((res) => {
+        console.log("[notebook]", res);
         if (res.success) {
           setQuestions(res.data);
           setStats(res.stats);
