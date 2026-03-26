@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/layout/PageHeader";
 import { cn } from "@/lib/utils";
@@ -9,67 +10,66 @@ const PRACTICE_TYPES = [
     type: "daily",
     icon: "☀️",
     title: "每日练习",
-    desc: "根据你的薄弱知识点，每日智能推荐",
+    desc: "根据薄弱知识点，每日智能推荐10题",
     color: "from-solar-400 to-amber-400",
     bgLight: "bg-solar-50",
     count: 10,
-    status: "ready", // ready | completed | locked
-  },
-  {
-    type: "weekly",
-    icon: "📅",
-    title: "每周练习册",
-    desc: "本周错题知识点全覆盖，系统化巩固",
-    color: "from-nebula-500 to-nebula-600",
-    bgLight: "bg-nebula-50",
-    count: 25,
-    status: "ready",
   },
   {
     type: "review",
     icon: "🔄",
     title: "错题复习",
-    desc: "挑出所有错题，逐个讲解并重新练习",
+    desc: "从错题本中抽题，重新练习巩固",
     color: "from-aurora-500 to-aurora-600",
     bgLight: "bg-aurora-50",
-    count: 5,
-    status: "ready",
+    count: 10,
   },
-];
-
-const WEAK_POINTS = [
-  { name: "一元二次方程", errorRate: 75, errorCount: 6, subject: "MATH" },
-  { name: "自由落体运动", errorRate: 60, errorCount: 3, subject: "PHYSICS" },
-  { name: "复合函数", errorRate: 50, errorCount: 4, subject: "MATH" },
-  { name: "化学方程式配平", errorRate: 33, errorCount: 2, subject: "CHEMISTRY" },
 ];
 
 const SUBJECT_ICONS: Record<string, string> = {
   MATH: "📐", PHYSICS: "⚡", CHEMISTRY: "🧪",
+  ENGLISH: "🔤", CHINESE: "📖", BIOLOGY: "🧬",
 };
 
+interface WeakPoint {
+  id: string;
+  name: string;
+  subject: string;
+  errorCount: number;
+}
+
 export default function PracticePage() {
+  const [weakPoints, setWeakPoints] = useState<WeakPoint[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 从知识卡片 API 取出有错题的知识点，按错题数排序
+    fetch("/api/knowledge")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success) {
+          const withErrors = (res.data as WeakPoint[])
+            .filter((kp) => kp.errorCount > 0)
+            .sort((a, b) => b.errorCount - a.errorCount)
+            .slice(0, 6);
+          setWeakPoints(withErrors);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div>
-      <PageHeader
-        title="练习中心"
-        rightAction={
-          <Link
-            href="/print?type=practice"
-            className="h-8 px-3 rounded-lg bg-gray-100 text-[var(--color-text-secondary)] text-xs font-medium flex items-center gap-1"
-          >
-            🖨️ 打印练习册
-          </Link>
-        }
-      />
+      <PageHeader title="练习中心" subtitle="AI智能出题，针对性强化" />
 
       <div className="px-4 pt-5 space-y-6 animate-fade-in">
-        {/* Practice Types */}
+
+        {/* 练习类型 */}
         <section className="space-y-3">
           {PRACTICE_TYPES.map((p, i) => (
             <Link
               key={p.type}
-              href={`/practice?type=${p.type}`}
+              href={`/practice/session?type=${p.type}`}
               className="block bg-white rounded-2xl overflow-hidden shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] card-hover animate-slide-up"
               style={{ animationDelay: `${i * 80}ms`, animationFillMode: "backwards" }}
             >
@@ -87,38 +87,58 @@ export default function PracticePage() {
                       {p.count}题
                     </span>
                   </div>
-                  <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">
-                    {p.desc}
-                  </p>
+                  <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">{p.desc}</p>
                 </div>
-                <div className="flex-shrink-0">
-                  <div className="w-9 h-9 rounded-xl bg-nebula-50 flex items-center justify-center">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-nebula-500">
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                  </div>
+                <div className="w-9 h-9 rounded-xl bg-nebula-50 flex items-center justify-center flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-nebula-500">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
                 </div>
               </div>
             </Link>
           ))}
         </section>
 
-        {/* Weak Points - Targeted Practice */}
+        {/* 薄弱知识点专项 */}
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-sm">薄弱知识点专项</h2>
-            <Link href="/notebook/analysis" className="text-xs text-nebula-500 font-medium">
-              完整分析 →
+            <Link href="/knowledge" className="text-xs text-nebula-500 font-medium">
+              查看全部 →
             </Link>
           </div>
 
+          {loading && (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-white rounded-xl p-3.5 border border-[var(--color-border-light)] animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gray-100" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 bg-gray-100 rounded w-1/3" />
+                      <div className="h-2 bg-gray-100 rounded w-full" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loading && weakPoints.length === 0 && (
+            <div className="bg-white rounded-2xl p-6 text-center shadow-[var(--shadow-sm)] border border-[var(--color-border-light)]">
+              <div className="text-3xl mb-2">📖</div>
+              <p className="text-sm text-[var(--color-text-secondary)]">还没有错题记录</p>
+              <p className="text-xs text-[var(--color-text-tertiary)] mt-1">拍照解题并保存后，这里会显示薄弱知识点</p>
+            </div>
+          )}
+
           <div className="space-y-2">
-            {WEAK_POINTS.map((wp, i) => (
+            {weakPoints.map((wp, i) => (
               <Link
-                key={wp.name}
-                href={`/practice?type=targeted&kp=${encodeURIComponent(wp.name)}`}
+                key={wp.id}
+                href={`/practice/session?type=targeted&kp=${encodeURIComponent(wp.name)}&kpId=${wp.id}`}
                 className="flex items-center gap-3 bg-white rounded-xl p-3.5 shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] card-hover animate-slide-up"
-                style={{ animationDelay: `${(i + 3) * 60}ms`, animationFillMode: "backwards" }}
+                style={{ animationDelay: `${(i + 2) * 60}ms`, animationFillMode: "backwards" }}
               >
                 <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center text-sm flex-shrink-0">
                   {SUBJECT_ICONS[wp.subject] || "📚"}
@@ -126,47 +146,20 @@ export default function PracticePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium truncate">{wp.name}</span>
-                    <span className="text-[10px] text-[var(--color-text-tertiary)]">
-                      错{wp.errorCount}题
-                    </span>
+                    <span className="text-[10px] text-wrong">错{wp.errorCount}次</span>
                   </div>
-                  {/* Error rate bar */}
                   <div className="mt-1.5 flex items-center gap-2">
                     <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                       <div
-                        className={cn(
-                          "h-full rounded-full transition-all",
-                          wp.errorRate > 60 ? "bg-wrong" : wp.errorRate > 40 ? "bg-partial" : "bg-correct"
-                        )}
-                        style={{ width: `${wp.errorRate}%` }}
+                        className="h-full rounded-full bg-wrong"
+                        style={{ width: `${Math.min(wp.errorCount * 15, 100)}%` }}
                       />
                     </div>
-                    <span className={cn(
-                      "text-[10px] font-medium",
-                      wp.errorRate > 60 ? "text-wrong" : wp.errorRate > 40 ? "text-partial" : "text-correct"
-                    )}>
-                      {wp.errorRate}%错误率
-                    </span>
                   </div>
                 </div>
-                <div className="text-xs text-nebula-500 font-medium flex-shrink-0">
-                  练习 →
-                </div>
+                <span className="text-xs text-nebula-500 font-medium flex-shrink-0">专项 →</span>
               </Link>
             ))}
-          </div>
-        </section>
-
-        {/* Recent Practice History */}
-        <section>
-          <h2 className="font-semibold text-sm mb-3">最近练习</h2>
-          <div className="bg-white rounded-2xl p-4 shadow-[var(--shadow-sm)] border border-[var(--color-border-light)]">
-            <div className="text-center py-6">
-              <div className="text-3xl mb-2">📋</div>
-              <p className="text-sm text-[var(--color-text-tertiary)]">
-                开始第一次练习吧！
-              </p>
-            </div>
           </div>
         </section>
 
