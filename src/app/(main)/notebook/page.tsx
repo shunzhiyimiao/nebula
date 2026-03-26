@@ -225,7 +225,7 @@ export default function NotebookPage() {
               <div className="text-center py-16">
                 <div className="text-5xl mb-4">📖</div>
                 <p className="text-sm font-medium text-[var(--color-text-secondary)]">还没有错题</p>
-                <p className="text-xs text-[var(--color-text-tertiary)] mt-1">拍照解题后点击"保存到错题本"</p>
+                <p className="text-xs text-[var(--color-text-tertiary)] mt-1">拍照解题后点击&ldquo;保存到错题本&rdquo;</p>
               </div>
             )}
           </div>

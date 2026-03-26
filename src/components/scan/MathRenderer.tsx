@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 
 /**
  * 渲染包含 LaTeX 的文本
@@ -88,25 +88,20 @@ function parseContent(content: string): string {
 }
 
 export default function MathRenderer({ content, className }: MathRendererProps) {
-  const [katexReady, setKatexReady] = useState(false);
+  const [html, setHtml] = useState(() => (typeof window !== "undefined" ? parseContent(content) : content));
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if ((window as unknown as { katex?: unknown }).katex) {
-      setKatexReady(true);
-      return;
-    }
+    setHtml(parseContent(content));
+
+    if ((window as unknown as { katex?: unknown }).katex) return;
     const timer = setInterval(() => {
       if ((window as unknown as { katex?: unknown }).katex) {
         clearInterval(timer);
-        setKatexReady(true);
+        setHtml(parseContent(content));
       }
     }, 100);
     return () => clearInterval(timer);
-  }, []);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const html = useMemo(() => parseContent(content), [content, katexReady]);
+  }, [content]);
 
   return (
     <div
@@ -126,28 +121,20 @@ export function Formula({
   display?: boolean;
   className?: string;
 }) {
-  const [katexReady, setKatexReady] = useState(false);
+  const [html, setHtml] = useState(() => (typeof window !== "undefined" ? renderLatexToHtml(latex, display) : latex));
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if ((window as unknown as { katex?: unknown }).katex) {
-      setKatexReady(true);
-      return;
-    }
+    setHtml(renderLatexToHtml(latex, display));
+
+    if ((window as unknown as { katex?: unknown }).katex) return;
     const timer = setInterval(() => {
       if ((window as unknown as { katex?: unknown }).katex) {
         clearInterval(timer);
-        setKatexReady(true);
+        setHtml(renderLatexToHtml(latex, display));
       }
     }, 100);
     return () => clearInterval(timer);
-  }, []);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const html = useMemo(
-    () => renderLatexToHtml(latex, display),
-    [latex, display, katexReady]
-  );
+  }, [latex, display]);
 
   if (display) {
     return (
