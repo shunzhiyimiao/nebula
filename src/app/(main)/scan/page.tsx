@@ -111,6 +111,7 @@ export default function ScanPage() {
           errorType: solver.structuredData?.errorAnalysis?.errorType || null,
           difficulty: solver.structuredData?.difficulty || "MEDIUM",
           knowledgePoints: solver.structuredData?.knowledgePoints || [],
+          isInNotebook: true,
         }),
       });
       if (res.ok) {

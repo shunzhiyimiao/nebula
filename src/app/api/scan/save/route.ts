@@ -28,14 +28,15 @@ export async function POST(request: NextRequest) {
       errorType,
       difficulty,
       knowledgePoints, // { name: string; isMain: boolean }[]
+      isInNotebook: isInNotebookBody,
     } = body;
 
     if (!questionText || !subject) {
       return NextResponse.json({ error: "缺少必要字段" }, { status: 400 });
     }
 
-    // 如果提供了userAnswer且isCorrect为false，自动标记为错题
-    const isInNotebook = userAnswer && isCorrect === false;
+    // 前端明确传了 isInNotebook 时优先使用，否则根据答案自动判断
+    const isInNotebook = isInNotebookBody ?? (userAnswer && isCorrect === false);
 
     const question = await prisma.question.create({
       data: {
