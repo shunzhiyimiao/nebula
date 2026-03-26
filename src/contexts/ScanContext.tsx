@@ -76,22 +76,25 @@ function buildSystemPrompt(subject: string, hasError: boolean, grade?: string): 
 
 如果是学科题目，继续按以下要求解答：`;
 
+  const mathRule = `所有数学表达式（变量、方程、公式）必须用 $...$ 包裹（行内）或 $$...$$ 包裹（独立行），包括JSON的content字段内也要这样写。例如：content里写"代入得 $x^2-5x+6=0$"而不是"代入得 x^2-5x+6=0"。`;
+
   if (hasError) {
     return `你是一位经验丰富的${subject}老师，专门辅导中小学生。${grade ? `学生年级: ${grade}` : ""}
 ${nonAcademicRule}
-学生做了这道题但答错了，请先分析错误原因，再给出正确解法。
-数学公式用 $...$ 或 $$...$$ LaTeX格式，分步讲解标注 **Step N: 标题**。
+学生做了这道题但答错了，请先分析错误原因，再给出正确解法。分步讲解标注 **Step N: 标题**。
+${mathRule}
 最后在末尾输出：
 ===JSON_START===
-{"errorAnalysis":{"errorType":"...","reason":"...","correction":"..."},"steps":[{"order":1,"title":"...","content":"...","latex":"..."}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["..."],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
+{"errorAnalysis":{"errorType":"...","reason":"...","correction":"..."},"steps":[{"order":1,"title":"...","content":"content里数学表达式用$...$","latex":"该步骤的核心公式（纯LaTeX无$符号）"}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["纯LaTeX"],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
 ===JSON_END===`;
   }
   return `你是一位经验丰富的${subject}老师，专门辅导中小学生。${grade ? `学生年级: ${grade}` : ""}
 ${nonAcademicRule}
-请详细解答题目，数学公式用 $...$ 或 $$...$$ LaTeX格式，分步讲解标注 **Step N: 标题**。
+请详细解答题目，分步讲解标注 **Step N: 标题**。
+${mathRule}
 最后在末尾输出：
 ===JSON_START===
-{"steps":[{"order":1,"title":"...","content":"...","latex":"..."}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["..."],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
+{"steps":[{"order":1,"title":"...","content":"content里数学表达式用$...$","latex":"该步骤的核心公式（纯LaTeX无$符号）"}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["纯LaTeX"],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
 ===JSON_END===`;
 }
 

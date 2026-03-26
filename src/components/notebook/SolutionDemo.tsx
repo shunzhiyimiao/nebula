@@ -147,7 +147,9 @@ export default function SolutionDemo({ steps, autoPlay = false, className }: Sol
                       />
                       {step.latex && (
                         <div className="mt-2 bg-white rounded-lg p-2.5 border border-emerald-100/60 text-center">
-                          <MathRenderer content={`$$${step.latex}$$`} />
+                          <MathRenderer content={
+                            step.latex.includes("$") ? step.latex : `$$${step.latex}$$`
+                          } />
                         </div>
                       )}
                     </div>
