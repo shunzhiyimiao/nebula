@@ -2,12 +2,15 @@ export const dynamic = "force-dynamic";
 import { isDatabaseAvailable } from "@/lib/db-available";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 
 /** GET /api/notebook — 错题列表（支持分页/筛选） */
 export async function GET(request: NextRequest) {
   if (!isDatabaseAvailable()) return NextResponse.json({ data: [], success: true });
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const { searchParams } = new URL(request.url);
-  const userId = searchParams.get("userId") || "demo-user";
+  const userId = session.user.id;
   const subject = searchParams.get("subject");
   const mastery = searchParams.get("mastery");
   const knowledgePoint = searchParams.get("kp");
