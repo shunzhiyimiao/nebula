@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateKnowledgeCard } from "@/lib/ai/knowledge-extractor";
+import { auth } from "@/lib/auth";
 
 /** GET /api/knowledge/[id] — 获取知识点详情 */
 export async function GET(
@@ -31,7 +32,8 @@ export async function GET(
     }
 
     // 获取用户相关错题数
-    const userId = new URL(request.url).searchParams.get("userId") || "demo-user";
+    const session = await auth();
+    const userId = session?.user?.id || "";
     const errorQuestions = await prisma.question.findMany({
       where: {
         userId,

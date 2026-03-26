@@ -2,14 +2,17 @@ export const dynamic = "force-dynamic";
 import { isDatabaseAvailable } from "@/lib/db-available";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 
 /** GET /api/knowledge — 获取知识点列表（支持按学科/年级筛选） */
 export async function GET(request: NextRequest) {
   if (!isDatabaseAvailable()) return NextResponse.json({ data: [], success: true });
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const subject = searchParams.get("subject");
   const grade = searchParams.get("grade");
-  const userId = searchParams.get("userId") || "demo-user";
+  const userId = session.user.id;
 
   try {
     const knowledgePoints = await prisma.knowledgePoint.findMany({
