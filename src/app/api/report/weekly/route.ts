@@ -2,11 +2,14 @@ export const dynamic = "force-dynamic";
 import { isDatabaseAvailable } from "@/lib/db-available";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 
 /** GET /api/report/weekly — 每周详细数据 */
 export async function GET(request: NextRequest) {
-  if (!isDatabaseAvailable()) return NextResponse.json({ data: [], success: true });
-  const userId = new URL(request.url).searchParams.get("userId") || "demo-user";
+  if (!isDatabaseAvailable()) return NextResponse.json({ data: {}, success: true });
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const userId = session.user.id;
   const weeksBack = parseInt(new URL(request.url).searchParams.get("weeks") || "4");
 
   try {
