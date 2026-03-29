@@ -19,6 +19,33 @@ const PROVIDERS = Object.entries(PROVIDER_CONFIG).map(([value, cfg]) => ({
   ...cfg,
 }));
 
+const GRADES = [
+  { value: "PRIMARY_1", label: "小学一年级" },
+  { value: "PRIMARY_2", label: "小学二年级" },
+  { value: "PRIMARY_3", label: "小学三年级" },
+  { value: "PRIMARY_4", label: "小学四年级" },
+  { value: "PRIMARY_5", label: "小学五年级" },
+  { value: "PRIMARY_6", label: "小学六年级" },
+  { value: "JUNIOR_1",  label: "初一（七年级）" },
+  { value: "JUNIOR_2",  label: "初二（八年级）" },
+  { value: "JUNIOR_3",  label: "初三（九年级）" },
+  { value: "SENIOR_1",  label: "高一" },
+  { value: "SENIOR_2",  label: "高二" },
+  { value: "SENIOR_3",  label: "高三" },
+];
+
+const SUBJECTS = [
+  { value: "MATH",      label: "数学", icon: "📐" },
+  { value: "CHINESE",   label: "语文", icon: "📖" },
+  { value: "ENGLISH",   label: "英语", icon: "🔤" },
+  { value: "PHYSICS",   label: "物理", icon: "⚡" },
+  { value: "CHEMISTRY", label: "化学", icon: "🧪" },
+  { value: "BIOLOGY",   label: "生物", icon: "🧬" },
+  { value: "HISTORY",   label: "历史", icon: "🏛️" },
+  { value: "GEOGRAPHY", label: "地理", icon: "🌍" },
+  { value: "POLITICS",  label: "政治", icon: "📜" },
+];
+
 const PROVIDER_ICONS: Record<string, React.ReactNode> = {
   qwen: (
     <svg viewBox="0 0 200 200" fill="none" className="w-9 h-9" xmlns="http://www.w3.org/2000/svg">
@@ -90,6 +117,12 @@ export default function SettingsPage() {
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState(false);
 
+  // 学习档案
+  const [grade, setGrade] = useState<string>("");
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+
   useEffect(() => {
     setProvider(getClientProvider());
     const loaded: Record<string, string> = {};
@@ -97,7 +130,39 @@ export default function SettingsPage() {
       loaded[p.value] = getApiKey(p.value);
     });
     setKeys(loaded);
+
+    // 加载用户档案
+    fetch("/api/user/profile")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.data) {
+          setGrade(res.data.grade || "");
+          setSubjects(res.data.subjects || []);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleProfileSave = async () => {
+    setProfileSaving(true);
+    try {
+      await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grade: grade || null, subjects }),
+      });
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 2000);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const toggleSubject = (value: string) => {
+    setSubjects((prev) =>
+      prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value]
+    );
+  };
 
   const handleSave = () => {
     setClientProvider(provider);
@@ -115,6 +180,69 @@ export default function SettingsPage() {
       <PageHeader title="设置" />
 
       <div className="px-4 pt-5 space-y-4 animate-fade-in">
+
+        {/* 学习档案 */}
+        <section className="bg-white rounded-2xl shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] overflow-hidden">
+          <div className="px-4 py-3 border-b border-[var(--color-border-light)]">
+            <h3 className="text-sm font-semibold">学习档案</h3>
+            <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">用于匹配课纲范围，确保练习题不超纲</p>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {/* 年级 */}
+            <div>
+              <label className="text-xs font-medium text-[var(--color-text-secondary)] block mb-2">当前年级</label>
+              <select
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-nebula-400/40 focus:border-nebula-400 transition-all"
+              >
+                <option value="">请选择年级</option>
+                {GRADES.map((g) => (
+                  <option key={g.value} value={g.value}>{g.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 学科 */}
+            <div>
+              <label className="text-xs font-medium text-[var(--color-text-secondary)] block mb-2">学习学科（可多选）</label>
+              <div className="grid grid-cols-3 gap-2">
+                {SUBJECTS.map((s) => {
+                  const active = subjects.includes(s.value);
+                  return (
+                    <button
+                      key={s.value}
+                      onClick={() => toggleSubject(s.value)}
+                      className={cn(
+                        "flex flex-col items-center gap-1 py-2.5 rounded-xl border text-xs font-medium transition-all",
+                        active
+                          ? "border-nebula-400 bg-nebula-50/50 text-nebula-700"
+                          : "border-[var(--color-border-light)] bg-white text-[var(--color-text-secondary)]"
+                      )}
+                    >
+                      <span className="text-base">{s.icon}</span>
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              onClick={handleProfileSave}
+              disabled={profileSaving}
+              className={cn(
+                "w-full h-11 rounded-xl font-semibold text-sm transition-all",
+                profileSaved
+                  ? "bg-emerald-500 text-white"
+                  : "bg-nebula-gradient text-white shadow-lg shadow-nebula-500/20 active:scale-[0.98]"
+              )}
+            >
+              {profileSaved ? "✅ 已保存" : profileSaving ? "保存中..." : "保存档案"}
+            </button>
+          </div>
+        </section>
 
         {/* AI 引擎选择 */}
         <section className="bg-white rounded-2xl shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] overflow-hidden">
