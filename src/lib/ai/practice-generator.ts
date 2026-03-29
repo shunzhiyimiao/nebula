@@ -68,8 +68,16 @@ ${curriculumScope}
 
 3. 难度分布：EASY 20%，MEDIUM 60%，HARD 20%
 
-4. 所有数学表达式必须用 $...$ 包裹（行内）或 $$...$$ 包裹（独立行）。
-   例如：$x^2 - 3x + 2 = 0$，不写 x^2-3x+2=0
+4. 数学表达式格式规则（非常重要，必须严格遵守）：
+   - 所有数学式必须用 $...$ 包裹，例如：$x^2 - 3x + 2 = 0$
+   - 独立展示的大公式用 $$...$$ 包裹，$$...$$ 必须在同一行内，不得换行分割
+     ✓ 正确：$$5-2=3$$
+     ✗ 错误：$$\n5-2=3\n$$
+   - 禁止同一内容同时出现 LaTeX 版和纯文本版
+     ✓ 正确：解得 $x=3$
+     ✗ 错误：解得 $x=3$\nx=3  （重复）
+   - answer 字段：纯数字/字母结果直接写（如 "3"），不要加 $；CHOICE题只写字母（"A"）
+   - explanation 字段：中文文字说明 + $LaTeX$ 公式，每步写成一行，不要在公式后重复写纯文本
 
 5. 选项字段：只有 CHOICE 题才填写 options 数组，其他类型 options 为 null
 
@@ -78,11 +86,11 @@ ${curriculumScope}
 [
   {
     "questionText": "题目文字描述（含 $LaTeX$）",
-    "questionLatex": "独立公式块（可选，如题目有大型公式）",
+    "questionLatex": "独立公式块（可选，仅当题目有需要单独展示的大型公式时填写）",
     "questionType": "CHOICE|FILL_BLANK|SHORT_ANSWER|CALCULATION",
     "options": ["A. 选项1", "B. 选项2", "C. 选项3", "D. 选项4"] 或 null,
-    "answer": "正确答案（CHOICE题填A/B/C/D，其他填具体答案含LaTeX）",
-    "explanation": "详细解题过程（含 $LaTeX$，步骤清晰）",
+    "answer": "CHOICE题填单个字母如A，数字结果直接填如3或x=3，复杂式子填如$\\frac{1}{2}$",
+    "explanation": "步骤1：...计算得 $5-2=3$\n步骤2：...",
     "knowledgePoint": "本题考查的核心知识点",
     "difficulty": "EASY|MEDIUM|HARD"
   }
@@ -103,6 +111,33 @@ ${weakPointsSection}${errorSamplesSection}
   return parseQuestions(raw, opts.count);
 }
 
+/**
+ * 清洗 AI 生成的文本字段，去掉常见的重复问题：
+ * - $expr$\n同内容纯文本  → 只保留 LaTeX
+ * - $$\nexpr\n$$  → $$expr$$（$$不能跨行）
+ */
+function cleanField(text: string): string {
+  if (!text) return text;
+
+  // 修复跨行的 $$ 块：$$\n内容\n$$ → $$内容$$
+  text = text.replace(/\$\$\s*\n([\s\S]*?)\n\s*\$\$/g, (_, inner) =>
+    `$$${inner.replace(/\n/g, " ").trim()}$$`
+  );
+
+  // 去掉 $expr$ 或 $$expr$$ 后紧跟的相同纯文本（允许中间有空格/换行）
+  text = text.replace(/(\$\$?)([\s\S]*?)\1\s*\n([^\n$]{1,80})/g, (match, delim, latex, plain) => {
+    // 将 LaTeX 去掉反斜杠命令后，对比纯文本是否近似相同
+    const latexStripped = latex.replace(/\\[a-zA-Z]+/g, "").replace(/[{} ]/g, "").trim();
+    const plainStripped = plain.replace(/[^\d\w+\-=.<>]/g, "").trim();
+    if (latexStripped && plainStripped && latexStripped === plainStripped) {
+      return `${delim}${latex}${delim}`;
+    }
+    return match;
+  });
+
+  return text;
+}
+
 /** 解析 AI 返回的 JSON，带容错 */
 function parseQuestions(raw: string, expectedCount: number): GeneratedQuestion[] {
   // 提取 JSON 数组部分（AI 可能会在前后加说明文字）
@@ -120,15 +155,23 @@ function parseQuestions(raw: string, expectedCount: number): GeneratedQuestion[]
     throw new Error("AI 未返回有效题目");
   }
 
-  // 基本校验：过滤掉缺少必填字段的题目
-  const valid = questions.filter(
-    (q) =>
-      q.questionText &&
-      q.questionType &&
-      ["CHOICE", "FILL_BLANK", "SHORT_ANSWER", "CALCULATION"].includes(q.questionType) &&
-      q.answer &&
-      q.explanation
-  );
+  // 基本校验 + 字段清洗
+  const valid = questions
+    .filter(
+      (q) =>
+        q.questionText &&
+        q.questionType &&
+        ["CHOICE", "FILL_BLANK", "SHORT_ANSWER", "CALCULATION"].includes(q.questionType) &&
+        q.answer &&
+        q.explanation
+    )
+    .map((q) => ({
+      ...q,
+      questionText: cleanField(q.questionText),
+      answer: cleanField(q.answer),
+      explanation: cleanField(q.explanation),
+      options: q.options?.map((o: string) => cleanField(o)),
+    }));
 
   if (valid.length === 0) throw new Error("AI 返回的题目格式不符合要求");
 
