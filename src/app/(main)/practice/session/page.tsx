@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import PageHeader from "@/components/layout/PageHeader";
 import MathRenderer from "@/components/scan/MathRenderer";
@@ -11,13 +11,20 @@ interface PracticeQuestion {
   questionText: string;
   questionLatex?: string;
   questionType: "CHOICE" | "FILL_BLANK" | "SHORT_ANSWER" | "CALCULATION";
-  options?: string[];       // 选择题选项
-  answer: string;           // 正确答案
-  explanation: string;      // 解析
-  knowledgePoint?: string;  // 涉及知识点
+  options?: string[];
+  answer: string;
+  explanation: string;
+  knowledgePoint?: string;
+  difficulty?: string;
 }
 
-type SessionStage = "loading" | "question" | "result" | "summary";
+interface AnswerRecord {
+  questionId: string;   // DB PracticeQuestion id
+  userAnswer: string;
+  isCorrect: boolean;
+}
+
+type SessionStage = "loading" | "question" | "summary";
 
 function PracticeSessionInner() {
   const searchParams = useSearchParams();
@@ -36,9 +43,53 @@ function PracticeSessionInner() {
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [error, setError] = useState("");
 
+  // DB session tracking
+  const sessionIdRef = useRef<string | null>(null);
+  const questionIdsRef = useRef<string[]>([]);
+  const answersRef = useRef<AnswerRecord[]>([]);
+
+  // 创建 DB session（后台静默，不阻塞答题）
+  const startDbSession = useCallback(async (qs: PracticeQuestion[]) => {
+    try {
+      const res = await fetch("/api/practice/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questions: qs, type, kp }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        sessionIdRef.current = data.sessionId;
+        questionIdsRef.current = data.questionIds;
+      }
+    } catch {
+      // 静默失败，不影响答题体验
+    }
+  }, [type, kp]);
+
+  // 保存结果到 DB
+  const completeDbSession = useCallback(async () => {
+    if (!sessionIdRef.current || answersRef.current.length === 0) return;
+    try {
+      await fetch("/api/practice/session/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: sessionIdRef.current,
+          answers: answersRef.current,
+        }),
+      });
+    } catch {
+      // 静默失败
+    }
+  }, []);
+
   const loadQuestions = useCallback(async () => {
     setStage("loading");
     setError("");
+    sessionIdRef.current = null;
+    questionIdsRef.current = [];
+    answersRef.current = [];
+
     try {
       const params = new URLSearchParams({
         type,
@@ -48,6 +99,7 @@ function PracticeSessionInner() {
       const res = await fetch(`/api/practice/generate?${params}`);
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "生成失败");
+
       setQuestions(data.questions);
       setCurrent(0);
       setUserAnswer("");
@@ -55,11 +107,13 @@ function PracticeSessionInner() {
       setIsCorrect(null);
       setScore({ correct: 0, total: 0 });
       setStage("question");
+
+      // 后台创建 DB session
+      startDbSession(data.questions);
     } catch (e: any) {
       setError(e.message || "生成题目失败，请重试");
-      setStage("loading");
     }
-  }, [type, kp, count]);
+  }, [type, kp, count, startDbSession]);
 
   useEffect(() => { loadQuestions(); }, [loadQuestions]);
 
@@ -73,11 +127,18 @@ function PracticeSessionInner() {
       correct: prev.correct + (correct ? 1 : 0),
       total: prev.total + 1,
     }));
+
+    // 记录答案
+    const qId = questionIdsRef.current[current];
+    if (qId) {
+      answersRef.current.push({ questionId: qId, userAnswer: userAnswer.trim(), isCorrect: correct });
+    }
   };
 
   const handleNext = () => {
     if (current >= questions.length - 1) {
       setStage("summary");
+      completeDbSession();
     } else {
       setCurrent((c) => c + 1);
       setUserAnswer("");
@@ -130,7 +191,7 @@ function PracticeSessionInner() {
 
   // ===== Summary =====
   if (stage === "summary") {
-    const pct = Math.round((score.correct / score.total) * 100);
+    const pct = score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0;
     return (
       <div>
         <PageHeader title="练习结果" showBack />
@@ -228,7 +289,7 @@ function PracticeSessionInner() {
           </div>
         )}
 
-        {/* Text input (非选择题) */}
+        {/* Text input */}
         {q.questionType !== "CHOICE" && !showResult && (
           <textarea
             value={userAnswer}
