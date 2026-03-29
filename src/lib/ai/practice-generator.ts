@@ -55,9 +55,22 @@ export async function generatePracticeQuestions(
       ? `\n用户近期错题示例（参考题型和难度，不要重复原题）：\n${opts.errorSamples.slice(0, 5).map((e, i) => `${i + 1}. ${e}`).join("\n")}`
       : "";
 
+  // targeted 模式：在 system prompt 顶部单独强调知识点要求
+  const targetedFocus = opts.type === "targeted" && opts.targetKnowledgePoint
+    ? `【⚠️ 专项模式 — 最高优先级约束】
+本次练习是「${opts.targetKnowledgePoint}」专项，所有题目必须满足：
+1. 每道题的核心考查点必须是「${opts.targetKnowledgePoint}」本身，不是其他知识点
+2. 题目必须需要用「${opts.targetKnowledgePoint}」的方法才能解答，不能用更简单的方法绕开
+3. 禁止出现与「${opts.targetKnowledgePoint}」无关的简单算术题（如 2+3、5-2 等）
+4. 难度至少为 MEDIUM，题目应体现「${opts.targetKnowledgePoint}」的核心技能
+5. 每道题的 knowledgePoint 字段必须填写「${opts.targetKnowledgePoint}」
+
+`
+    : "";
+
   const system = `你是一名专业的中学数学/学科出题教师。你的任务是为学生生成练习题。
 
-【严格约束】
+${targetedFocus}【课纲约束】
 1. 所有题目必须严格在以下课纲范围内，不得出现超纲内容：
 ${curriculumScope}
 
@@ -96,9 +109,13 @@ ${curriculumScope}
   }
 ]`;
 
+  const targetedReminder = opts.type === "targeted" && opts.targetKnowledgePoint
+    ? `\n⚠️ 再次提醒：每道题都必须是「${opts.targetKnowledgePoint}」的练习题，题目本身要体现该知识点的核心方法，不能出与之无关的简单计算。`
+    : "";
+
   const userPrompt = `练习类型：${typeDesc}
 题目数量：${opts.count} 题
-${weakPointsSection}${errorSamplesSection}
+${weakPointsSection}${errorSamplesSection}${targetedReminder}
 
 请生成 ${opts.count} 道符合以上要求的练习题，以 JSON 数组格式返回。`;
 
@@ -176,4 +193,21 @@ function parseQuestions(raw: string, expectedCount: number): GeneratedQuestion[]
   if (valid.length === 0) throw new Error("AI 返回的题目格式不符合要求");
 
   return valid.slice(0, expectedCount);
+}
+
+/** targeted 模式：二次校验题目是否真的考查了目标知识点 */
+export function filterTargetedQuestions(
+  questions: GeneratedQuestion[],
+  targetKP: string
+): GeneratedQuestion[] {
+  // 简单的关键词检测：题目文本或 knowledgePoint 必须包含目标知识点的关键词
+  const keywords = targetKP
+    .replace(/[（）()【】\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+
+  return questions.filter((q) => {
+    const text = `${q.questionText} ${q.knowledgePoint || ""}`.toLowerCase();
+    return keywords.some((kw) => text.includes(kw.toLowerCase()));
+  });
 }

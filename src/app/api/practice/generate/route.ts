@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { generatePracticeQuestions } from "@/lib/ai/practice-generator";
+import { generatePracticeQuestions, filterTargetedQuestions } from "@/lib/ai/practice-generator";
 import type { Subject } from "@prisma/client";
 
 /**
@@ -73,18 +73,29 @@ export async function GET(request: NextRequest) {
         ? notebookQuestions.slice(0, 5).map((q) => q.questionText)
         : [];
 
+    // targeted 模式多生成几题，过滤后补足数量
+    const generateCount = type === "targeted" ? Math.min(count + 3, 20) : count;
+
     // 调用 AI 生成题目
-    const questions = await generatePracticeQuestions({
+    let questions = await generatePracticeQuestions({
       type,
       grade: user?.grade,
       subject,
-      count,
+      count: generateCount,
       targetKnowledgePoint: kp || undefined,
       weakPoints: type === "daily" ? weakPoints.slice(0, 4) : weakPoints,
       errorSamples,
     });
 
-    return NextResponse.json({ success: true, questions });
+    // targeted 模式：过滤掉明显不相关的题目
+    if (type === "targeted" && kp) {
+      questions = filterTargetedQuestions(questions, kp);
+      if (questions.length === 0) {
+        return NextResponse.json({ error: `未能生成「${kp}」相关的有效题目，请重试` }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ success: true, questions: questions.slice(0, count) });
   } catch (error: any) {
     console.error("Practice generate error:", error);
     return NextResponse.json(
