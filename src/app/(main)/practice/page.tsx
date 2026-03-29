@@ -389,18 +389,9 @@ export default function PracticePage() {
 
               {!curriculumLoading && parsed.blocks.length > 0 && (
                 <div className="space-y-3 pb-8">
-                  {/* 标题说明 */}
-                  {parsed.header && (
-                    <div className="flex items-center gap-2 py-2">
-                      <div className="flex-1 h-px bg-[var(--color-border-light)]" />
-                      <span className="text-[10px] text-[var(--color-text-tertiary)] font-medium px-2">{parsed.header}</span>
-                      <div className="flex-1 h-px bg-[var(--color-border-light)]" />
-                    </div>
-                  )}
-
                   {parsed.blocks.map((block, bi) => (
                     <div key={bi}>
-                      {/* 上下册/学期标签 */}
+                      {/* 上下册标签 */}
                       {block.semester && (
                         <div className="flex items-center gap-2 mb-2 mt-1">
                           <div className="h-px flex-1 bg-[var(--color-border-light)]" />
@@ -411,46 +402,72 @@ export default function PracticePage() {
                         </div>
                       )}
 
-                      {/* 章节卡片 */}
-                      <div className="space-y-2">
-                        {block.chapters.map((ch, ci) => (
-                          <div
-                            key={ci}
-                            className="bg-white rounded-2xl border border-[var(--color-border-light)] shadow-[var(--shadow-sm)] overflow-hidden"
-                          >
-                            {/* 章节标题 */}
-                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 bg-gray-50/80 border-b border-[var(--color-border-light)]">
-                              <div className="w-1.5 h-4 rounded-full bg-nebula-gradient flex-shrink-0" />
-                              <span className="text-xs font-semibold text-[var(--color-text-primary)] leading-snug min-w-0 break-words">
-                                {ch.title}
-                              </span>
-                            </div>
+                      <div className="space-y-2.5">
+                        {block.chapters.map((ch, ci) => {
+                          const globalIdx = bi * 20 + ci;
+                          const colors = [
+                            "from-nebula-400 to-nebula-600",
+                            "from-solar-400 to-amber-400",
+                            "from-aurora-500 to-aurora-600",
+                            "from-emerald-400 to-teal-500",
+                            "from-pink-400 to-rose-500",
+                            "from-blue-400 to-indigo-500",
+                          ];
+                          const color = colors[globalIdx % colors.length];
+                          // 章节序号：从标题提取数字，否则用索引
+                          const numMatch = ch.title.match(/\d+/);
+                          const chNum = numMatch ? numMatch[0] : String(ci + 1);
+                          // 摘要：前2条知识点
+                          const preview = ch.items.slice(0, 2).join("；");
 
-                            {/* 知识点列表 */}
-                            {ch.items.length > 0 && (
-                              <ul className="px-3.5 py-2 space-y-1.5">
-                                {ch.items.map((item, ii) => (
-                                  <li key={ii} className="flex items-start gap-2 min-w-0">
-                                    <span className="mt-1.5 w-1 h-1 rounded-full bg-nebula-300 flex-shrink-0" />
-                                    <span className="text-xs text-[var(--color-text-secondary)] leading-relaxed break-words min-w-0 flex-1">
-                                      {item}
+                          return (
+                            <div
+                              key={ci}
+                              className="bg-white rounded-2xl overflow-hidden shadow-[var(--shadow-sm)] border border-[var(--color-border-light)]"
+                            >
+                              {/* 主行 — 与每日练习卡片相同布局 */}
+                              <div className="flex items-center p-4 gap-3.5">
+                                <div className={cn(
+                                  "w-12 h-12 rounded-2xl bg-gradient-to-br flex items-center justify-center flex-shrink-0 shadow-md",
+                                  color
+                                )}>
+                                  <span className="text-white font-bold text-base">{chNum}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-semibold text-sm leading-snug">{ch.title}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 text-[var(--color-text-tertiary)] font-medium flex-shrink-0">
+                                      {ch.items.length}个知识点
                                     </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-
-                            {/* 禁止项 */}
-                            {ch.forbidden.length > 0 && (
-                              <div className="mx-3.5 mb-2.5 mt-1 bg-red-50 rounded-xl px-3 py-2">
-                                <p className="text-[10px] font-semibold text-red-400 mb-1">✗ 本章不考查</p>
-                                {ch.forbidden.map((f, fi) => (
-                                  <p key={fi} className="text-[11px] text-red-400/80 leading-relaxed break-words">{f}</p>
-                                ))}
+                                  </div>
+                                  {preview && (
+                                    <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5 line-clamp-1">{preview}</p>
+                                  )}
+                                </div>
                               </div>
-                            )}
-                          </div>
-                        ))}
+
+                              {/* 知识点展开区 */}
+                              {ch.items.length > 0 && (
+                                <div className="border-t border-[var(--color-border-light)] px-4 py-2.5 space-y-1.5 bg-gray-50/50">
+                                  {ch.items.map((item, ii) => (
+                                    <div key={ii} className="flex items-start gap-2 min-w-0">
+                                      <span className="mt-1.5 w-1 h-1 rounded-full bg-nebula-300 flex-shrink-0" />
+                                      <span className="text-xs text-[var(--color-text-secondary)] leading-relaxed break-words min-w-0 flex-1">
+                                        {item}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {ch.forbidden.length > 0 && (
+                                    <div className="mt-1.5 pt-1.5 border-t border-red-100 flex items-start gap-1.5">
+                                      <span className="text-[10px] text-red-400 font-medium flex-shrink-0 mt-0.5">✗</span>
+                                      <span className="text-[11px] text-red-400 break-words">{ch.forbidden.join("；")}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
