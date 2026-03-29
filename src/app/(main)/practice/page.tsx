@@ -45,31 +45,77 @@ interface WeakPoint {
   errorCount: number;
 }
 
-// 将课纲文本按章节分组，方便渲染
-function parseCurriculumText(text: string) {
-  const lines = text.split("\n");
-  const sections: { type: "header" | "chapter" | "item" | "forbidden" | "blank"; text: string }[] = [];
+interface CurriculumChapter {
+  title: string;
+  items: string[];
+  forbidden: string[];
+}
 
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line) { sections.push({ type: "blank", text: "" }); continue; }
+interface CurriculumBlock {
+  semester: string;   // e.g. "上册" / "" (高中无上下册)
+  chapters: CurriculumChapter[];
+}
 
-    if (line.startsWith("【") && line.endsWith("】")) {
-      sections.push({ type: "header", text: line });
-    } else if (line.startsWith("▌")) {
-      sections.push({ type: "chapter", text: line.slice(1).trim() });
-    } else if (line.startsWith("第") || (line.match(/^第\d/) )) {
-      sections.push({ type: "chapter", text: line });
-    } else if (line.startsWith("✗")) {
-      sections.push({ type: "forbidden", text: line.slice(1).trim() });
-    } else if (line.startsWith("-")) {
-      sections.push({ type: "item", text: line.slice(1).trim() });
-    } else {
-      sections.push({ type: "item", text: line });
+// 将课纲文本解析为结构化章节列表
+function parseCurriculumBlocks(text: string): { header: string; blocks: CurriculumBlock[] } {
+  const lines = text.split("\n").map((l) => l.trimEnd());
+
+  let header = "";
+  const blocks: CurriculumBlock[] = [];
+  let currentBlock: CurriculumBlock | null = null;
+  let currentChapter: CurriculumChapter | null = null;
+
+  const pushChapter = () => {
+    if (currentChapter && currentBlock) currentBlock.chapters.push(currentChapter);
+    currentChapter = null;
+  };
+  const pushBlock = () => {
+    pushChapter();
+    if (currentBlock) blocks.push(currentBlock);
+    currentBlock = null;
+  };
+
+  for (const line of lines) {
+    if (!line) continue;
+
+    // 大标题 【...】
+    if (line.startsWith("【")) {
+      header = line.replace(/[【】]/g, "").trim();
+      continue;
     }
+    // 上下册/学期分隔 ▌
+    if (line.startsWith("▌")) {
+      pushBlock();
+      currentBlock = { semester: line.slice(1).trim(), chapters: [] };
+      continue;
+    }
+    // 章节标题（第X章 / 第X节 / 重点综合考查 等）
+    if (line.match(/^第\d/) || line.startsWith("重点") || line.startsWith("难度")) {
+      if (!currentBlock) currentBlock = { semester: "", chapters: [] };
+      pushChapter();
+      currentChapter = { title: line, items: [], forbidden: [] };
+      continue;
+    }
+    // 禁止项
+    if (line.startsWith("✗")) {
+      const txt = line.replace(/^✗\s*禁止[：:]?\s*/, "").trim();
+      if (currentChapter) currentChapter.forbidden.push(txt);
+      continue;
+    }
+    // 知识点条目
+    if (line.startsWith("-")) {
+      if (currentChapter) currentChapter.items.push(line.slice(1).trim());
+      continue;
+    }
+    // 其他行（说明文字）附加到当前章节
+    if (currentChapter) currentChapter.items.push(line);
   }
 
-  return sections;
+  pushBlock();
+  // 如果没有▌分隔（高中直接是章节），确保有一个 block
+  if (blocks.length === 0 && currentBlock) blocks.push(currentBlock);
+
+  return { header, blocks };
 }
 
 export default function PracticePage() {
@@ -134,7 +180,7 @@ export default function PracticePage() {
     openCurriculum(subject);
   };
 
-  const parsed = parseCurriculumText(curriculumText);
+  const parsed = parseCurriculumBlocks(curriculumText);
 
   return (
     <div>
@@ -318,56 +364,98 @@ export default function PracticePage() {
             )}
 
             {/* 课纲内容 */}
-            <div className="overflow-y-auto flex-1 px-4 py-3 space-y-1">
+            <div className="overflow-y-auto overflow-x-hidden flex-1 px-4 py-3">
               {curriculumLoading && (
-                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-nebula-400 border-t-transparent animate-spin" />
                   <p className="text-xs text-[var(--color-text-tertiary)]">加载课纲中...</p>
                 </div>
               )}
 
-              {!curriculumLoading && parsed.map((seg, i) => {
-                if (seg.type === "blank") return <div key={i} className="h-2" />;
-                if (seg.type === "header") return (
-                  <div key={i} className="bg-nebula-gradient text-white text-xs font-semibold px-3 py-2 rounded-xl mb-1">
-                    {seg.text}
-                  </div>
-                );
-                if (seg.type === "chapter") return (
-                  <div key={i} className="flex items-center gap-2 mt-3 mb-1">
-                    <div className="w-1 h-4 rounded-full bg-nebula-400 flex-shrink-0" />
-                    <span className="text-sm font-semibold text-[var(--color-text-primary)]">{seg.text}</span>
-                  </div>
-                );
-                if (seg.type === "forbidden") return (
-                  <div key={i} className="flex items-start gap-1.5 pl-3 py-0.5">
-                    <span className="text-[10px] text-red-400 font-medium mt-0.5 flex-shrink-0">✗ 禁止</span>
-                    <span className="text-[11px] text-red-400">{seg.text.replace(/^禁止：/, "")}</span>
-                  </div>
-                );
-                return (
-                  <div key={i} className="flex items-start gap-1.5 pl-3 py-0.5">
-                    <span className="text-[10px] text-nebula-400 mt-1 flex-shrink-0">•</span>
-                    <span className="text-xs text-[var(--color-text-secondary)] leading-relaxed">{seg.text}</span>
-                  </div>
-                );
-              })}
-
               {!curriculumLoading && !curriculumText && (
-                <div className="text-center py-12">
+                <div className="text-center py-16">
+                  <div className="text-3xl mb-3">📋</div>
                   <p className="text-sm text-[var(--color-text-secondary)]">暂无课纲数据</p>
                   <p className="text-xs text-[var(--color-text-tertiary)] mt-1">请先在设置中选择年级</p>
                   <Link
                     href="/settings"
                     onClick={() => setSheetOpen(false)}
-                    className="inline-block mt-3 text-xs text-nebula-500 font-medium"
+                    className="inline-block mt-4 px-4 py-2 rounded-xl bg-nebula-50 text-xs text-nebula-600 font-medium"
                   >
-                    去设置 →
+                    去设置选择年级 →
                   </Link>
                 </div>
               )}
 
-              <div className="h-6" />
+              {!curriculumLoading && parsed.blocks.length > 0 && (
+                <div className="space-y-3 pb-8">
+                  {/* 标题说明 */}
+                  {parsed.header && (
+                    <div className="flex items-center gap-2 py-2">
+                      <div className="flex-1 h-px bg-[var(--color-border-light)]" />
+                      <span className="text-[10px] text-[var(--color-text-tertiary)] font-medium px-2">{parsed.header}</span>
+                      <div className="flex-1 h-px bg-[var(--color-border-light)]" />
+                    </div>
+                  )}
+
+                  {parsed.blocks.map((block, bi) => (
+                    <div key={bi}>
+                      {/* 上下册/学期标签 */}
+                      {block.semester && (
+                        <div className="flex items-center gap-2 mb-2 mt-1">
+                          <div className="h-px flex-1 bg-[var(--color-border-light)]" />
+                          <span className="text-[11px] font-semibold text-nebula-500 bg-nebula-50 px-2.5 py-0.5 rounded-full">
+                            {block.semester}
+                          </span>
+                          <div className="h-px flex-1 bg-[var(--color-border-light)]" />
+                        </div>
+                      )}
+
+                      {/* 章节卡片 */}
+                      <div className="space-y-2">
+                        {block.chapters.map((ch, ci) => (
+                          <div
+                            key={ci}
+                            className="bg-white rounded-2xl border border-[var(--color-border-light)] shadow-[var(--shadow-sm)] overflow-hidden"
+                          >
+                            {/* 章节标题 */}
+                            <div className="flex items-center gap-2.5 px-3.5 py-2.5 bg-gray-50/80 border-b border-[var(--color-border-light)]">
+                              <div className="w-1.5 h-4 rounded-full bg-nebula-gradient flex-shrink-0" />
+                              <span className="text-xs font-semibold text-[var(--color-text-primary)] leading-snug min-w-0 break-words">
+                                {ch.title}
+                              </span>
+                            </div>
+
+                            {/* 知识点列表 */}
+                            {ch.items.length > 0 && (
+                              <ul className="px-3.5 py-2 space-y-1.5">
+                                {ch.items.map((item, ii) => (
+                                  <li key={ii} className="flex items-start gap-2 min-w-0">
+                                    <span className="mt-1.5 w-1 h-1 rounded-full bg-nebula-300 flex-shrink-0" />
+                                    <span className="text-xs text-[var(--color-text-secondary)] leading-relaxed break-words min-w-0 flex-1">
+                                      {item}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+
+                            {/* 禁止项 */}
+                            {ch.forbidden.length > 0 && (
+                              <div className="mx-3.5 mb-2.5 mt-1 bg-red-50 rounded-xl px-3 py-2">
+                                <p className="text-[10px] font-semibold text-red-400 mb-1">✗ 本章不考查</p>
+                                {ch.forbidden.map((f, fi) => (
+                                  <p key={fi} className="text-[11px] text-red-400/80 leading-relaxed break-words">{f}</p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
