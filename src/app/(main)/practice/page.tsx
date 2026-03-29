@@ -38,6 +38,17 @@ const SUBJECT_LABELS: Record<string, string> = {
   HISTORY: "历史", GEOGRAPHY: "地理", POLITICS: "政治",
 };
 
+const CHAPTER_COLORS = [
+  "from-nebula-400 to-nebula-600",
+  "from-solar-400 to-amber-400",
+  "from-aurora-500 to-aurora-600",
+  "from-emerald-400 to-teal-500",
+  "from-pink-400 to-rose-500",
+  "from-blue-400 to-indigo-500",
+  "from-violet-400 to-purple-500",
+  "from-orange-400 to-red-400",
+];
+
 interface WeakPoint {
   id: string;
   name: string;
@@ -52,15 +63,12 @@ interface CurriculumChapter {
 }
 
 interface CurriculumBlock {
-  semester: string;   // e.g. "上册" / "" (高中无上下册)
+  semester: string;
   chapters: CurriculumChapter[];
 }
 
-// 将课纲文本解析为结构化章节列表
-function parseCurriculumBlocks(text: string): { header: string; blocks: CurriculumBlock[] } {
+function parseCurriculumBlocks(text: string): CurriculumBlock[] {
   const lines = text.split("\n").map((l) => l.trimEnd());
-
-  let header = "";
   const blocks: CurriculumBlock[] = [];
   let currentBlock: CurriculumBlock | null = null;
   let currentChapter: CurriculumChapter | null = null;
@@ -76,92 +84,47 @@ function parseCurriculumBlocks(text: string): { header: string; blocks: Curricul
   };
 
   for (const line of lines) {
-    if (!line) continue;
-
-    // 大标题 【...】
-    if (line.startsWith("【")) {
-      header = line.replace(/[【】]/g, "").trim();
-      continue;
-    }
-    // 上下册/学期分隔 ▌
+    if (!line || line.startsWith("【")) continue;
     if (line.startsWith("▌")) {
       pushBlock();
       currentBlock = { semester: line.slice(1).trim(), chapters: [] };
       continue;
     }
-    // 章节标题（第X章 / 第X节 / 重点综合考查 等）
     if (line.match(/^第\d/) || line.startsWith("重点") || line.startsWith("难度")) {
       if (!currentBlock) currentBlock = { semester: "", chapters: [] };
       pushChapter();
       currentChapter = { title: line, items: [], forbidden: [] };
       continue;
     }
-    // 禁止项
     if (line.startsWith("✗")) {
       const txt = line.replace(/^✗\s*禁止[：:]?\s*/, "").trim();
       if (currentChapter) currentChapter.forbidden.push(txt);
       continue;
     }
-    // 知识点条目
-    if (line.startsWith("-")) {
-      if (currentChapter) currentChapter.items.push(line.slice(1).trim());
-      continue;
+    if (line.startsWith("-") && currentChapter) {
+      currentChapter.items.push(line.slice(1).trim());
     }
-    // 其他行（说明文字）附加到当前章节
-    if (currentChapter) currentChapter.items.push(line);
   }
-
   pushBlock();
-  // 如果没有▌分隔（高中直接是章节），确保有一个 block
-  if (blocks.length === 0 && currentBlock) blocks.push(currentBlock);
-
-  return { header, blocks };
+  return blocks;
 }
 
 export default function PracticePage() {
   const [weakPoints, setWeakPoints] = useState<WeakPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 课纲抽屉
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [curriculumText, setCurriculumText] = useState("");
-  const [curriculumLoading, setCurriculumLoading] = useState(false);
+  const [curriculumBlocks, setCurriculumBlocks] = useState<CurriculumBlock[]>([]);
+  const [gradeLabel, setGradeLabel] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("MATH");
   const [userSubjects, setUserSubjects] = useState<string[]>(["MATH"]);
-  const [gradeLabel, setGradeLabel] = useState("");
+  const [showAllChapters, setShowAllChapters] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/knowledge")
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success) {
-          const withErrors = (res.data as WeakPoint[])
-            .filter((kp) => kp.errorCount > 0)
-            .sort((a, b) => b.errorCount - a.errorCount)
-            .slice(0, 6);
-          setWeakPoints(withErrors);
-        }
-      })
-      .finally(() => setLoading(false));
-
-    // 获取用户学科列表
-    fetch("/api/user/profile")
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.data?.subjects?.length) setUserSubjects(res.data.subjects);
-      })
-      .catch(() => {});
-  }, []);
-
-  const openCurriculum = async (subject = selectedSubject) => {
-    setSheetOpen(true);
-    setCurriculumLoading(true);
-    setCurriculumText("");
+  const loadCurriculum = async (subject: string) => {
     try {
       const res = await fetch(`/api/curriculum?subject=${subject}`);
       const data = await res.json();
       if (data.success) {
-        setCurriculumText(data.data.text);
+        setCurriculumBlocks(parseCurriculumBlocks(data.data.text));
         const gradeMap: Record<string, string> = {
           PRIMARY_1: "小学一年级", PRIMARY_2: "小学二年级", PRIMARY_3: "小学三年级",
           PRIMARY_4: "小学四年级", PRIMARY_5: "小学五年级", PRIMARY_6: "小学六年级",
@@ -170,38 +133,131 @@ export default function PracticePage() {
         };
         setGradeLabel(gradeMap[data.data.grade] || "");
       }
-    } finally {
-      setCurriculumLoading(false);
-    }
+    } catch { /* silent */ }
   };
 
-  const handleSubjectChange = (subject: string) => {
-    setSelectedSubject(subject);
-    openCurriculum(subject);
-  };
+  useEffect(() => {
+    fetch("/api/knowledge")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success) {
+          setWeakPoints(
+            (res.data as WeakPoint[])
+              .filter((kp) => kp.errorCount > 0)
+              .sort((a, b) => b.errorCount - a.errorCount)
+              .slice(0, 6)
+          );
+        }
+      })
+      .finally(() => setLoading(false));
 
-  const parsed = parseCurriculumBlocks(curriculumText);
+    fetch("/api/user/profile")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.data) {
+          const subs: string[] = res.data.subjects?.length ? res.data.subjects : ["MATH"];
+          setUserSubjects(subs);
+          setSelectedSubject(subs[0]);
+          loadCurriculum(subs[0]);
+        } else {
+          loadCurriculum("MATH");
+        }
+      })
+      .catch(() => loadCurriculum("MATH"));
+  }, []);
+
+  // 所有章节展平
+  const allChapters = curriculumBlocks.flatMap((b) =>
+    b.chapters.map((ch) => ({ ...ch, semester: b.semester }))
+  );
+  const visibleChapters = showAllChapters ? allChapters : allChapters.slice(0, 3);
 
   return (
     <div>
-      <PageHeader
-        title="练习中心"
-        subtitle="AI智能出题，针对性强化"
-        rightAction={
-          <button
-            onClick={() => openCurriculum(selectedSubject)}
-            className="flex items-center gap-1 text-xs text-nebula-500 font-medium px-2.5 py-1.5 rounded-lg bg-nebula-50 active:scale-95 transition-transform"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-            </svg>
-            课纲
-          </button>
-        }
-      />
+      <PageHeader title="练习中心" subtitle="AI智能出题，针对性强化" />
 
       <div className="px-4 pt-5 space-y-6 animate-fade-in">
+
+        {/* 课纲范围 */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-semibold text-sm">课纲范围</h2>
+              {gradeLabel && (
+                <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">{gradeLabel} · AI出题严格在此范围内</p>
+              )}
+            </div>
+            {/* 学科切换 */}
+            {userSubjects.length > 1 && (
+              <div className="flex gap-1">
+                {userSubjects.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { setSelectedSubject(s); setShowAllChapters(false); loadCurriculum(s); }}
+                    className={cn(
+                      "text-[10px] px-2 py-1 rounded-lg font-medium transition-colors",
+                      selectedSubject === s
+                        ? "bg-nebula-gradient text-white"
+                        : "bg-gray-100 text-[var(--color-text-secondary)]"
+                    )}
+                  >
+                    {SUBJECT_ICONS[s]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {allChapters.length === 0 && (
+            <div className="bg-white rounded-2xl p-5 text-center shadow-[var(--shadow-sm)] border border-[var(--color-border-light)]">
+              <p className="text-sm text-[var(--color-text-secondary)]">请先在设置中选择年级</p>
+              <Link href="/settings" className="text-xs text-nebula-500 font-medium mt-1 block">去设置 →</Link>
+            </div>
+          )}
+
+          <div className="space-y-2.5">
+            {visibleChapters.map((ch, i) => {
+              const color = CHAPTER_COLORS[i % CHAPTER_COLORS.length];
+              const numMatch = ch.title.match(/\d+/);
+              const chNum = numMatch ? numMatch[0] : String(i + 1);
+              const preview = ch.items[0] || "";
+
+              return (
+                <div
+                  key={i}
+                  className="bg-white rounded-2xl overflow-hidden shadow-[var(--shadow-sm)] border border-[var(--color-border-light)]"
+                >
+                  <div className="flex items-center p-4 gap-4">
+                    <div className={cn(
+                      "w-14 h-14 rounded-2xl bg-gradient-to-br flex items-center justify-center flex-shrink-0 shadow-md",
+                      color
+                    )}>
+                      <span className="text-white font-bold text-lg">{chNum}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-sm leading-snug">{ch.title}</h3>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 text-[var(--color-text-secondary)] font-medium flex-shrink-0">
+                          {ch.items.length}个知识点
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5 line-clamp-1">{preview}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {allChapters.length > 3 && (
+            <button
+              onClick={() => setShowAllChapters((v) => !v)}
+              className="w-full mt-2 py-2.5 rounded-xl border border-[var(--color-border-light)] bg-white text-xs text-[var(--color-text-secondary)] font-medium"
+            >
+              {showAllChapters ? "收起 ↑" : `查看全部 ${allChapters.length} 个章节 ↓`}
+            </button>
+          )}
+        </section>
 
         {/* 练习类型 */}
         <section className="space-y-3">
@@ -242,9 +298,7 @@ export default function PracticePage() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-sm">薄弱知识点专项</h2>
-            <Link href="/knowledge" className="text-xs text-nebula-500 font-medium">
-              查看全部 →
-            </Link>
+            <Link href="/knowledge" className="text-xs text-nebula-500 font-medium">查看全部 →</Link>
           </div>
 
           {loading && (
@@ -287,13 +341,8 @@ export default function PracticePage() {
                     <span className="text-sm font-medium truncate">{wp.name}</span>
                     <span className="text-[10px] text-wrong">错{wp.errorCount}次</span>
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-wrong"
-                        style={{ width: `${Math.min(wp.errorCount * 15, 100)}%` }}
-                      />
-                    </div>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-wrong" style={{ width: `${Math.min(wp.errorCount * 15, 100)}%` }} />
                   </div>
                 </div>
                 <span className="text-xs text-nebula-500 font-medium flex-shrink-0">专项 →</span>
@@ -304,179 +353,6 @@ export default function PracticePage() {
 
         <div className="h-4" />
       </div>
-
-      {/* 课纲抽屉 */}
-      {sheetOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          {/* 遮罩 */}
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setSheetOpen(false)}
-          />
-
-          {/* 抽屉主体 */}
-          <div className="relative bg-[var(--color-bg)] rounded-t-3xl overflow-hidden flex flex-col"
-            style={{ maxHeight: "88vh" }}>
-
-            {/* 拖拽指示条 */}
-            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-              <div className="w-9 h-1 rounded-full bg-gray-200" />
-            </div>
-
-            {/* 标题栏 */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--color-border-light)] flex-shrink-0">
-              <div>
-                <h3 className="font-semibold text-sm">课纲范围</h3>
-                {gradeLabel && (
-                  <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">{gradeLabel} · AI出题仅在此范围内</p>
-                )}
-              </div>
-              <button
-                onClick={() => setSheetOpen(false)}
-                className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-
-            {/* 学科切换 Tab */}
-            {userSubjects.length > 1 && (
-              <div className="flex gap-1.5 px-4 py-2.5 border-b border-[var(--color-border-light)] overflow-x-auto flex-shrink-0">
-                {userSubjects.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => handleSubjectChange(s)}
-                    className={cn(
-                      "flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0",
-                      selectedSubject === s
-                        ? "bg-nebula-gradient text-white"
-                        : "bg-gray-100 text-[var(--color-text-secondary)]"
-                    )}
-                  >
-                    <span>{SUBJECT_ICONS[s]}</span>
-                    {SUBJECT_LABELS[s]}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* 课纲内容 */}
-            <div className="overflow-y-auto overflow-x-hidden flex-1 px-4 py-3">
-              {curriculumLoading && (
-                <div className="flex flex-col items-center justify-center py-16 gap-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-nebula-400 border-t-transparent animate-spin" />
-                  <p className="text-xs text-[var(--color-text-tertiary)]">加载课纲中...</p>
-                </div>
-              )}
-
-              {!curriculumLoading && !curriculumText && (
-                <div className="text-center py-16">
-                  <div className="text-3xl mb-3">📋</div>
-                  <p className="text-sm text-[var(--color-text-secondary)]">暂无课纲数据</p>
-                  <p className="text-xs text-[var(--color-text-tertiary)] mt-1">请先在设置中选择年级</p>
-                  <Link
-                    href="/settings"
-                    onClick={() => setSheetOpen(false)}
-                    className="inline-block mt-4 px-4 py-2 rounded-xl bg-nebula-50 text-xs text-nebula-600 font-medium"
-                  >
-                    去设置选择年级 →
-                  </Link>
-                </div>
-              )}
-
-              {!curriculumLoading && parsed.blocks.length > 0 && (
-                <div className="space-y-3 pb-8">
-                  {parsed.blocks.map((block, bi) => (
-                    <div key={bi}>
-                      {/* 上下册标签 */}
-                      {block.semester && (
-                        <div className="flex items-center gap-2 mb-2 mt-1">
-                          <div className="h-px flex-1 bg-[var(--color-border-light)]" />
-                          <span className="text-[11px] font-semibold text-nebula-500 bg-nebula-50 px-2.5 py-0.5 rounded-full">
-                            {block.semester}
-                          </span>
-                          <div className="h-px flex-1 bg-[var(--color-border-light)]" />
-                        </div>
-                      )}
-
-                      <div className="space-y-2.5">
-                        {block.chapters.map((ch, ci) => {
-                          const globalIdx = bi * 20 + ci;
-                          const colors = [
-                            "from-nebula-400 to-nebula-600",
-                            "from-solar-400 to-amber-400",
-                            "from-aurora-500 to-aurora-600",
-                            "from-emerald-400 to-teal-500",
-                            "from-pink-400 to-rose-500",
-                            "from-blue-400 to-indigo-500",
-                          ];
-                          const color = colors[globalIdx % colors.length];
-                          // 章节序号：从标题提取数字，否则用索引
-                          const numMatch = ch.title.match(/\d+/);
-                          const chNum = numMatch ? numMatch[0] : String(ci + 1);
-                          // 摘要：前2条知识点
-                          const preview = ch.items.slice(0, 2).join("；");
-
-                          return (
-                            <div
-                              key={ci}
-                              className="bg-white rounded-2xl overflow-hidden shadow-[var(--shadow-sm)] border border-[var(--color-border-light)]"
-                            >
-                              {/* 主行 — 与每日练习卡片相同布局 */}
-                              <div className="flex items-center p-4 gap-3.5">
-                                <div className={cn(
-                                  "w-12 h-12 rounded-2xl bg-gradient-to-br flex items-center justify-center flex-shrink-0 shadow-md",
-                                  color
-                                )}>
-                                  <span className="text-white font-bold text-base">{chNum}</span>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-semibold text-sm leading-snug">{ch.title}</span>
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 text-[var(--color-text-tertiary)] font-medium flex-shrink-0">
-                                      {ch.items.length}个知识点
-                                    </span>
-                                  </div>
-                                  {preview && (
-                                    <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5 line-clamp-1">{preview}</p>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* 知识点展开区 */}
-                              {ch.items.length > 0 && (
-                                <div className="border-t border-[var(--color-border-light)] px-4 py-2.5 space-y-1.5 bg-gray-50/50">
-                                  {ch.items.map((item, ii) => (
-                                    <div key={ii} className="flex items-start gap-2 min-w-0">
-                                      <span className="mt-1.5 w-1 h-1 rounded-full bg-nebula-300 flex-shrink-0" />
-                                      <span className="text-xs text-[var(--color-text-secondary)] leading-relaxed break-words min-w-0 flex-1">
-                                        {item}
-                                      </span>
-                                    </div>
-                                  ))}
-                                  {ch.forbidden.length > 0 && (
-                                    <div className="mt-1.5 pt-1.5 border-t border-red-100 flex items-start gap-1.5">
-                                      <span className="text-[10px] text-red-400 font-medium flex-shrink-0 mt-0.5">✗</span>
-                                      <span className="text-[11px] text-red-400 break-words">{ch.forbidden.join("；")}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
