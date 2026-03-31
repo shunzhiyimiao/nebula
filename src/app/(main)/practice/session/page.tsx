@@ -120,7 +120,15 @@ function PracticeSessionInner() {
   const handleSubmit = () => {
     if (!userAnswer.trim()) return;
     const q = questions[current];
-    const correct = userAnswer.trim().toLowerCase() === q.answer.trim().toLowerCase();
+
+    // 选择题：只比较字母前缀（"A. 文字" → "A"，兼容 AI 返回 "A"/"A."/"选A" 等格式）
+    const extractChoice = (s: string) =>
+      s.trim().match(/^([A-Da-d])[.\s。、]?/)?.[1]?.toUpperCase() ?? s.trim().toUpperCase();
+
+    const correct =
+      q.questionType === "CHOICE"
+        ? extractChoice(userAnswer) === extractChoice(q.answer)
+        : userAnswer.trim().toLowerCase() === q.answer.trim().toLowerCase();
     setIsCorrect(correct);
     setShowResult(true);
     setScore((prev) => ({
