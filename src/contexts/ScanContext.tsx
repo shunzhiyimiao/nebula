@@ -129,13 +129,22 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       const raw = await clientCallAIWithImage({
         system: `你是专业的题目识别系统，精确提取图片中的题目内容，严格按JSON格式输出，不输出任何其他内容。
 
+你需要同时支持印刷体和手写体识别。
+
+手写体识别要点：
+- 仔细辨认手写笔迹，注意易混淆字符：0与O、1与l与I、2与Z、5与S、6与b、9与q、x与×
+- 手写数学符号注意区分：负号(-)与减号(-)与分数线、点乘(·)与小数点(.)、逗号(,)与句号(.)
+- 对于潦草字迹，结合上下文和数学逻辑推断正确内容
+- 注意手写体中的上下标位置可能不够精确，根据数学语义判断
+- 如果图片中同时有印刷题目和手写答案/解题过程，请分别识别并在questionText中标注
+
 字段说明：
 - questionText：题目的纯文本描述，公式用自然语言表达（如"1/2 x - 1 = 4/5 - y"），不含$符号
 - questionLatex：题目的完整LaTeX版本，【所有】数学表达式（包括简单的方程、多项式、数字运算）都必须用$...$包裹，例如："解方程组：$\\frac{1}{2}x - 1 = \\frac{4}{5} - y$"，又如："$(x-3)(x-14)+10=0$"；如题目完全无数学内容则为null
 - questionType：CHOICE（选择）|FILL_BLANK（填空）|SHORT_ANSWER（简答）|CALCULATION（计算/解答）|OTHER
 - subject：MATH|CHINESE|ENGLISH|PHYSICS|CHEMISTRY|BIOLOGY|HISTORY|GEOGRAPHY|POLITICS
 - options：选择题选项数组如["A. ...", "B. ..."]，非选择题为null
-- confidence：识别置信度0-1
+- confidence：识别置信度0-1（手写体模糊时适当降低置信度）
 
 LaTeX规范：
 - 分数用\\frac{分子}{分母}
@@ -146,7 +155,7 @@ LaTeX规范：
 
 输出格式（严格JSON）：
 {"questionText":"...","questionLatex":"...","questionType":"...","subject":"...","options":null,"confidence":0.95}`,
-        prompt: "请仔细识别图片中的全部题目内容，特别注意数学公式的准确性，按JSON格式输出。",
+        prompt: "请仔细识别图片中的全部题目内容。注意：图片可能包含手写文字，请仔细辨认笔迹，结合数学逻辑和上下文推断模糊字符。特别注意数学公式的准确性，按JSON格式输出。",
         imageBase64: base64,
         mediaType: "image/jpeg",
         maxTokens: 4096,

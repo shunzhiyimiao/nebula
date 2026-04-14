@@ -50,8 +50,41 @@ export default function ScanPage() {
           const canvas = document.createElement("canvas");
           canvas.width = width;
           canvas.height = height;
-          canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", 0.8));
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Enhance for handwriting: increase contrast and sharpen
+          const imageData = ctx.getImageData(0, 0, width, height);
+          const data = imageData.data;
+
+          // Increase contrast (factor 1.4) to make handwritten strokes stand out
+          const factor = 1.4;
+          const intercept = 128 * (1 - factor);
+          for (let i = 0; i < data.length; i += 4) {
+            data[i] = Math.min(255, Math.max(0, data[i] * factor + intercept));
+            data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor + intercept));
+            data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor + intercept));
+          }
+          ctx.putImageData(imageData, 0, 0);
+
+          // Unsharp mask: sharpen text edges
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = width;
+          tempCanvas.height = height;
+          const tempCtx = tempCanvas.getContext("2d")!;
+          tempCtx.filter = "blur(1px)";
+          tempCtx.drawImage(canvas, 0, 0);
+          const blurred = tempCtx.getImageData(0, 0, width, height);
+          const sharp = ctx.getImageData(0, 0, width, height);
+          const amount = 0.5;
+          for (let i = 0; i < sharp.data.length; i += 4) {
+            sharp.data[i] = Math.min(255, Math.max(0, sharp.data[i] + amount * (sharp.data[i] - blurred.data[i])));
+            sharp.data[i + 1] = Math.min(255, Math.max(0, sharp.data[i + 1] + amount * (sharp.data[i + 1] - blurred.data[i + 1])));
+            sharp.data[i + 2] = Math.min(255, Math.max(0, sharp.data[i + 2] + amount * (sharp.data[i + 2] - blurred.data[i + 2])));
+          }
+          ctx.putImageData(sharp, 0, 0);
+
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
         };
         img.onerror = reject;
         img.src = e.target?.result as string;
