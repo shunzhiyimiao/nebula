@@ -1,5 +1,10 @@
 [build]
   command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  DATABASE_URL = "postgresql://placeholder:placeholder@localhost:5432/nebula"
+  NEXTAUTH_SECRET = "netlify-build-placeholder"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
