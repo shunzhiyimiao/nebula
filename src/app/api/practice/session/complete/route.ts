@@ -24,6 +24,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "参数缺失" }, { status: 400 });
   }
 
+  // 校验 sessionId 属于当前用户
+  const practiceSession = await prisma.practiceSession.findUnique({
+    where: { id: sessionId },
+    select: { userId: true, status: true },
+  });
+  if (!practiceSession || practiceSession.userId !== userId) {
+    return NextResponse.json({ error: "无权操作该练习" }, { status: 403 });
+  }
+  if (practiceSession.status === "COMPLETED") {
+    return NextResponse.json({ error: "该练习已完成" }, { status: 400 });
+  }
+
+  // 校验所有 questionId 属于该 session
+  const questionIds = answers.map((a) => a.questionId);
+  const validQuestions = await prisma.practiceQuestion.findMany({
+    where: { id: { in: questionIds }, sessionId },
+    select: { id: true },
+  });
+  const validIds = new Set(validQuestions.map((q) => q.id));
+  const invalidIds = questionIds.filter((id) => !validIds.has(id));
+  if (invalidIds.length > 0) {
+    return NextResponse.json({ error: "存在无效的题目ID" }, { status: 400 });
+  }
+
   const correctCount = answers.filter((a) => a.isCorrect).length;
   const accuracy = correctCount / answers.length;
 

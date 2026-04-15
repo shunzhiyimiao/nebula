@@ -124,23 +124,44 @@ export default function SettingsPage() {
   const [profileSaving, setProfileSaving] = useState(false);
 
   useEffect(() => {
-    setProvider(getClientProvider());
-    const loaded: Record<string, string> = {};
-    PROVIDERS.forEach((p) => {
-      loaded[p.value] = getApiKey(p.value);
-    });
-    setKeys(loaded);
-
-    // 加载用户档案
+    // 加载用户档案（含 AI 配置）
     fetch("/api/user/profile")
       .then((r) => r.json())
       .then((res) => {
         if (res.data) {
           setGrade(res.data.grade || "");
           setSubjects(res.data.subjects || []);
+
+          // 从服务器加载 AI 配置，同步到 localStorage
+          if (res.data.aiProvider) {
+            setProvider(res.data.aiProvider);
+            setClientProvider(res.data.aiProvider);
+          } else {
+            setProvider(getClientProvider());
+          }
+
+          const serverKeys = (res.data.aiKeys || {}) as Record<string, string>;
+          const merged: Record<string, string> = {};
+          PROVIDERS.forEach((p) => {
+            merged[p.value] = serverKeys[p.value] || getApiKey(p.value);
+          });
+          setKeys(merged);
+
+          // 同步到 localStorage
+          PROVIDERS.forEach((p) => {
+            if (merged[p.value]) setApiKey(p.value, merged[p.value]);
+          });
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        // 离线回退到 localStorage
+        setProvider(getClientProvider());
+        const loaded: Record<string, string> = {};
+        PROVIDERS.forEach((p) => {
+          loaded[p.value] = getApiKey(p.value);
+        });
+        setKeys(loaded);
+      });
   }, []);
 
   const handleProfileSave = async () => {
@@ -164,13 +185,32 @@ export default function SettingsPage() {
     );
   };
 
-  const handleSave = () => {
+  const [keySaving, setKeySaving] = useState(false);
+
+  const handleSave = async () => {
+    setKeySaving(true);
+
+    // 保存到 localStorage
     setClientProvider(provider);
+    const trimmedKeys: Record<string, string> = {};
     PROVIDERS.forEach((p) => {
-      if (keys[p.value] !== undefined) {
-        setApiKey(p.value, keys[p.value].trim());
-      }
+      const val = (keys[p.value] || "").trim();
+      trimmedKeys[p.value] = val;
+      setApiKey(p.value, val);
     });
+
+    // 同步到服务器
+    try {
+      await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aiProvider: provider, aiKeys: trimmedKeys }),
+      });
+    } catch {
+      // 即使服务器保存失败，localStorage 已保存，不影响使用
+    }
+
+    setKeySaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -295,7 +335,7 @@ export default function SettingsPage() {
         <section className="bg-white rounded-2xl shadow-[var(--shadow-sm)] border border-[var(--color-border-light)] overflow-hidden">
           <div className="px-4 py-3 border-b border-[var(--color-border-light)]">
             <h3 className="text-sm font-semibold">API Key 配置</h3>
-            <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">Key 仅保存在本机，不上传服务器</p>
+            <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">Key 会加密存储到你的账号，换设备也能使用</p>
           </div>
 
           <div className="p-4 space-y-4">
@@ -334,6 +374,7 @@ export default function SettingsPage() {
           <div className="px-4 pb-4">
             <button
               onClick={handleSave}
+              disabled={keySaving}
               className={cn(
                 "w-full h-11 rounded-xl font-semibold text-sm transition-all",
                 saved
@@ -341,7 +382,7 @@ export default function SettingsPage() {
                   : "bg-nebula-gradient text-white shadow-lg shadow-nebula-500/20 active:scale-[0.98]"
               )}
             >
-              {saved ? "✅ 已保存" : "保存设置"}
+              {saved ? "✅ 已保存" : keySaving ? "保存中..." : "保存设置"}
             </button>
           </div>
         </section>
