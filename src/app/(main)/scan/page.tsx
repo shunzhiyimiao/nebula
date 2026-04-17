@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, lazy, Suspense } from "react";
 import { useScanContext } from "@/contexts/ScanContext";
 import PageHeader from "@/components/layout/PageHeader";
 import SolutionStream from "@/components/scan/SolutionStream";
@@ -9,6 +9,8 @@ import KnowledgePopover from "@/components/knowledge/KnowledgePopover";
 import MathRenderer from "@/components/scan/MathRenderer";
 import { cn } from "@/lib/utils";
 import type { Subject } from "@/types/question";
+
+const GeometryPlayer = lazy(() => import("@/components/geometry/GeometryPlayer"));
 
 const SUBJECTS = [
   { value: "MATH" as Subject, label: "📐 数学" },
@@ -28,6 +30,7 @@ export default function ScanPage() {
     userAnswer, setUserAnswer,
     editedQuestion, setEditedQuestion,
     solver,
+    geometrySolution,
     handleOcr,
     handleReset,
   } = useScanContext();
@@ -380,9 +383,19 @@ export default function ScanPage() {
               {userAnswer && <p className="text-xs text-wrong mt-1.5">你的答案: {userAnswer}</p>}
             </div>
 
-            <SolutionStream text={solver.streamText} status={solver.status === "idle" ? "loading" : solver.status} error={solver.error} />
+            {/* 几何题：显示 GeometryPlayer */}
+            {solver.status === "done" && geometrySolution && (
+              <Suspense fallback={<div className="text-center py-8 text-sm text-gray-400">加载几何引擎...</div>}>
+                <GeometryPlayer solution={geometrySolution} />
+              </Suspense>
+            )}
 
-            {solver.status === "done" && solver.structuredData?.steps && (
+            {/* 非几何题：显示文字解答 */}
+            {!geometrySolution && (
+              <SolutionStream text={solver.streamText} status={solver.status === "idle" ? "loading" : solver.status} error={solver.error} />
+            )}
+
+            {!geometrySolution && solver.status === "done" && solver.structuredData?.steps && (
               <StepByStep steps={solver.structuredData.steps} />
             )}
 

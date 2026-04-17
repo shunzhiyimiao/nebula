@@ -2,7 +2,9 @@
 
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
 import type { Subject, SolutionStep } from "@/types/question";
+import type { GeometrySolution } from "@/types/geometry";
 import { clientCallAIStream, clientCallAIWithImage } from "@/lib/ai/client-caller";
+import { GEOMETRY_SYSTEM_PROMPT, isGeometryQuestion } from "@/lib/geometry-prompt";
 
 type Stage = "upload" | "text-input" | "preview" | "ocr" | "solving" | "result";
 
@@ -51,6 +53,8 @@ interface ScanContextValue {
   setEditedQuestion: (q: string) => void;
   // Solver
   solver: SolverState & { solve: (params: SolveParams) => Promise<void>; reset: () => void };
+  // 几何
+  geometrySolution: GeometrySolution | null;
   // 操作
   handleOcr: () => Promise<void>;
   handleReset: () => void;
@@ -109,6 +113,8 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [selectedSubject, setSelectedSubject] = useState<Subject>("MATH");
   const [userAnswer, setUserAnswer] = useState("");
   const [editedQuestion, setEditedQuestion] = useState("");
+
+  const [geometrySolution, setGeometrySolution] = useState<GeometrySolution | null>(null);
 
   const [solverState, setSolverState] = useState<SolverState>({
     status: "idle",
@@ -180,6 +186,9 @@ LaTeX规范：
   const solve = useCallback(async (params: SolveParams) => {
     abortRef.current?.abort();
     setSolverState({ status: "loading", streamText: "", structuredData: null, error: null });
+    setGeometrySolution(null);
+
+    const isGeometry = isGeometryQuestion(params.questionText);
 
     try {
       let userMessage = `请解答以下题目：\n\n${params.questionText}`;
@@ -187,10 +196,14 @@ LaTeX规范：
       if (params.options) userMessage += `\n\n选项：\n${params.options.join("\n")}`;
       if (params.userAnswer) userMessage += `\n\n学生的答案：${params.userAnswer}`;
 
+      const systemPrompt = isGeometry
+        ? GEOMETRY_SYSTEM_PROMPT
+        : buildSystemPrompt(params.subject, !!params.userAnswer, params.grade);
+
       const stream = clientCallAIStream({
-        system: buildSystemPrompt(params.subject, !!params.userAnswer, params.grade),
+        system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
-        maxTokens: 4096,
+        maxTokens: isGeometry ? 8192 : 4096,
       });
 
       const reader = stream.getReader();
@@ -216,6 +229,24 @@ LaTeX规范：
             }
             if (parsed.error) throw new Error(parsed.error);
           } catch {}
+        }
+      }
+
+      // 几何题：尝试解析为 GeometrySolution
+      if (isGeometry) {
+        try {
+          const jsonMatch = fullText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const geoData = JSON.parse(jsonMatch[0]) as GeometrySolution;
+            if (geoData.base?.points && geoData.steps) {
+              setGeometrySolution(geoData);
+              setSolverState({ status: "done", streamText: fullText, structuredData: null, error: null });
+              return;
+            }
+          }
+        } catch {
+          // 几何 JSON 解析失败，fallback 到普通解题
+          console.warn("Geometry JSON parse failed, falling back to text solution");
         }
       }
 
@@ -251,6 +282,7 @@ LaTeX规范：
     setOcrError(null);
     setUserAnswer("");
     setEditedQuestion("");
+    setGeometrySolution(null);
     resetSolver();
   }, [resetSolver]);
 
@@ -263,6 +295,7 @@ LaTeX规范：
       userAnswer, setUserAnswer,
       editedQuestion, setEditedQuestion,
       solver: { ...solverState, solve, reset: resetSolver },
+      geometrySolution,
       handleOcr,
       handleReset,
     }}>
