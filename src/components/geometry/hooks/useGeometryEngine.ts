@@ -318,6 +318,10 @@ export function useGeometryEngine(solution: GeometrySolution | null) {
         created.push(txt);
         break;
       }
+
+      default: {
+        console.warn("[geo] unknown action type:", (action as { type: string }).type, action);
+      }
     }
 
     return created;
@@ -346,12 +350,16 @@ export function useGeometryEngine(solution: GeometrySolution | null) {
       const step = solution.steps[executedStepsRef.current];
       if (!step) break;
       const stepElements: JXGElement[] = [];
-      for (const action of step.actions) {
-        try {
-          const created = executeAction(action);
-          stepElements.push(...created);
-        } catch (e) {
-          console.warn(`Geometry action failed:`, action, e);
+      if (!Array.isArray(step.actions)) {
+        console.warn(`[geo] step ${executedStepsRef.current} has no actions array:`, step);
+      } else {
+        for (const action of step.actions) {
+          try {
+            const created = executeAction(action);
+            stepElements.push(...created);
+          } catch (e) {
+            console.warn(`Geometry action failed:`, action, e);
+          }
         }
       }
       stepElementsRef.current.push(stepElements);

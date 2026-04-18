@@ -6,6 +6,61 @@ import type { GeometrySolution } from "@/types/geometry";
 import { clientCallAIStream, clientCallAIWithImage } from "@/lib/ai/client-caller";
 import { GEOMETRY_SYSTEM_PROMPT, isGeometryQuestion } from "@/lib/geometry-prompt";
 
+const ACTION_TYPE_TITLE: Record<string, string> = {
+  midpoint: "取中点",
+  perpendicular_foot: "作垂足",
+  intersection: "求交点",
+  angle_bisector: "角平分线",
+  parallel: "作平行线",
+  segment: "画线段",
+  mark_equal: "标记等量",
+  fill_polygon: "高亮区域",
+  right_angle: "标直角",
+  mark_angle: "标记角",
+  emphasize: "强调",
+  label: "添加标注",
+};
+
+/** 兼容 LLM 把 action 字段平铺到 step 上的情况，规范化为标准 schema */
+function normalizeGeometrySolution(raw: unknown): GeometrySolution | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (!obj.base || !Array.isArray(obj.steps)) return null;
+
+  const normalizedSteps = (obj.steps as unknown[]).map((rawStep, idx) => {
+    if (!rawStep || typeof rawStep !== "object") {
+      return { id: idx + 1, title: `步骤 ${idx + 1}`, desc: "", explanation: "", actions: [] };
+    }
+    const step = rawStep as Record<string, unknown>;
+
+    if (Array.isArray(step.actions)) {
+      return {
+        id: typeof step.id === "number" ? step.id : idx + 1,
+        title: typeof step.title === "string" ? step.title : `步骤 ${idx + 1}`,
+        desc: typeof step.desc === "string" ? step.desc : "",
+        explanation: typeof step.explanation === "string" ? step.explanation : "",
+        actions: step.actions,
+      };
+    }
+
+    // 平铺格式：step 本身就是一个 action
+    if (typeof step.type === "string") {
+      const { explanation, title, desc, ...actionFields } = step;
+      return {
+        id: idx + 1,
+        title: typeof title === "string" ? title : ACTION_TYPE_TITLE[step.type] ?? `步骤 ${idx + 1}`,
+        desc: typeof desc === "string" ? desc : "",
+        explanation: typeof explanation === "string" ? explanation : "",
+        actions: [actionFields],
+      };
+    }
+
+    return { id: idx + 1, title: `步骤 ${idx + 1}`, desc: "", explanation: "", actions: [] };
+  });
+
+  return { ...(obj as object), steps: normalizedSteps } as GeometrySolution;
+}
+
 type Stage = "upload" | "text-input" | "preview" | "ocr" | "solving" | "result";
 
 type SolverStatus = "idle" | "loading" | "streaming" | "done" | "error";
@@ -237,8 +292,9 @@ LaTeX规范：
         try {
           const jsonMatch = fullText.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            const geoData = JSON.parse(jsonMatch[0]) as GeometrySolution;
-            if (geoData.base?.points && geoData.steps) {
+            const rawGeo = JSON.parse(jsonMatch[0]);
+            const geoData = normalizeGeometrySolution(rawGeo);
+            if (geoData?.base?.points && geoData.steps) {
               setGeometrySolution(geoData);
               setSolverState({ status: "done", streamText: fullText, structuredData: null, error: null });
               return;
