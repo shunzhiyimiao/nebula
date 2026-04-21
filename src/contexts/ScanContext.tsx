@@ -21,6 +21,54 @@ const ACTION_TYPE_TITLE: Record<string, string> = {
   label: "添加标注",
 };
 
+/**
+ * 修复 LLM 返回的不合法 JSON 字符串，常见问题：
+ * - 字符串里有裸换行/制表符（应该是 \n / \t）
+ * - 字符串里 LaTeX 反斜杠没 double-escape（\triangle 应该是 \\triangle，\( 应该是 \\( ）
+ * 策略：走一遍字符，遇到字符串内的裸控制字符或裸反斜杠（且下一个不是合法 JSON 转义字符）就补一个反斜杠。
+ * 这样牺牲了 "LLM 正确输出 \t 作为 tab" 的能力（极罕见），换取 LaTeX 场景的稳健性。
+ */
+function repairLLMJson(raw: string): string {
+  let out = "";
+  let inString = false;
+  let i = 0;
+  while (i < raw.length) {
+    const c = raw[i];
+    if (!inString) {
+      out += c;
+      if (c === '"') inString = true;
+      i++;
+      continue;
+    }
+    // inside string
+    if (c === '"') {
+      out += c;
+      inString = false;
+      i++;
+      continue;
+    }
+    if (c === "\n") { out += "\\n"; i++; continue; }
+    if (c === "\r") { out += "\\r"; i++; continue; }
+    if (c === "\t") { out += "\\t"; i++; continue; }
+    if (c === "\\") {
+      const next = raw[i + 1];
+      // \" 和 \\ 认为是 LLM 正确转义，保留
+      if (next === '"' || next === "\\") {
+        out += c + next;
+        i += 2;
+        continue;
+      }
+      // 其他全部视作 LLM 忘了转义，补一个反斜杠
+      out += "\\\\";
+      i++;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 /** 兼容 LLM 把 action 字段平铺到 step 上的情况，规范化为标准 schema */
 function normalizeGeometrySolution(raw: unknown): GeometrySolution | null {
   if (!raw || typeof raw !== "object") return null;
@@ -308,7 +356,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         try {
           const jsonMatch = fullText.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            const rawGeo = JSON.parse(jsonMatch[0]);
+            const rawGeo = JSON.parse(repairLLMJson(jsonMatch[0]));
             const geoData = normalizeGeometrySolution(rawGeo);
             if (geoData?.base?.points && geoData.steps) {
               setGeometrySolution(geoData);
@@ -325,7 +373,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       const jsonMatch = fullText.match(/===JSON_START===([\s\S]*?)===JSON_END===/);
       let structured = null;
       if (jsonMatch?.[1]) {
-        try { structured = JSON.parse(jsonMatch[1].trim()); } catch {}
+        try { structured = JSON.parse(repairLLMJson(jsonMatch[1].trim())); } catch {}
       }
 
       if (structured?.notAcademic) {
