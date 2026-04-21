@@ -5,7 +5,6 @@ import SessionProviderWrapper from "@/components/SessionProviderWrapper";
 export const metadata: Metadata = {
   title: "Nebula — 智能学习平台",
   description: "AI驱动的中小学智能学习平台，拍照解题、知识卡片、错题本、智能练习",
-  manifest: "/manifest.json",
 };
 
 export const viewport: Viewport = {
