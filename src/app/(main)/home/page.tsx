@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useScanContext } from "@/contexts/ScanContext";
+import { compressAndEnhanceImage } from "@/lib/image-capture";
 
 const SUBJECT_ICONS: Record<string, string> = {
   MATH: "📐", CHINESE: "📖", ENGLISH: "🔤",
@@ -66,13 +69,44 @@ export default function HomePage() {
   const [userName, setUserName] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const router = useRouter();
+  const { captureImage } = useScanContext();
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoTaken = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";  // 清空，防止同一张图连续选两次触发不到
+    if (!file) return;
+    try {
+      const dataUrl = await compressAndEnhanceImage(file);
+      captureImage(dataUrl);
+      router.push("/scan");
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }, [captureImage, router]);
+
   useEffect(() => {
-    Promise.all([
-      fetch("/api/report/overview").then((r) => r.json()),
-      fetch("/api/notebook?limit=3").then((r) => r.json()),
-      fetch("/api/user/profile").then((r) => r.json()),
-    ]).then(([overview, notebook, profile]) => {
-      if (overview.success && overview.data) {
+    async function safeJson<T = unknown>(url: string): Promise<T | null> {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const text = await res.text();
+        if (!text) return null;
+        return JSON.parse(text) as T;
+      } catch {
+        return null;
+      }
+    }
+
+    (async () => {
+      const [overview, notebook, profile] = await Promise.all([
+        safeJson<{ success: boolean; data: { streak?: number; todayQuestions?: number; pendingReview?: number; weekAccuracy?: number } }>("/api/report/overview"),
+        safeJson<{ success: boolean; data: Array<{ id: string; subject: string; questionText: string; errorType: string | null; masteryLevel: string; createdAt: string }> }>("/api/notebook?limit=3"),
+        safeJson<{ data: { name?: string } }>("/api/user/profile"),
+      ]);
+
+      if (overview?.success && overview.data) {
         setStats({
           streak:         overview.data.streak         ?? 0,
           todayQuestions: overview.data.todayQuestions ?? 0,
@@ -80,9 +114,9 @@ export default function HomePage() {
           weekAccuracy:   overview.data.weekAccuracy   ?? 0,
         });
       }
-      if (notebook.success && Array.isArray(notebook.data)) {
+      if (notebook?.success && Array.isArray(notebook.data)) {
         setRecentErrors(
-          notebook.data.slice(0, 3).map((q: any) => ({
+          notebook.data.slice(0, 3).map((q) => ({
             id:           q.id,
             subject:      q.subject,
             questionText: q.questionText,
@@ -92,8 +126,9 @@ export default function HomePage() {
           }))
         );
       }
-      if (profile.data?.name) setUserName(profile.data.name);
-    }).finally(() => setLoading(false));
+      if (profile?.data?.name) setUserName(profile.data.name);
+      setLoading(false);
+    })();
   }, []);
 
   const statItems = [
@@ -121,10 +156,41 @@ export default function HomePage() {
         </p>
       </section>
 
+      {/* Primary CTA: 拍照解题 */}
+      <section>
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handlePhotoTaken}
+          className="hidden"
+        />
+        <button
+          onClick={() => cameraInputRef.current?.click()}
+          className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-br from-nebula-500 via-nebula-600 to-aurora-600 shadow-xl shadow-nebula-500/30 active:scale-[0.98] transition-transform"
+        >
+          <div className="flex items-center gap-4 px-6 py-5 text-left">
+            <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <div className="text-white text-lg font-semibold">拍照解题</div>
+              <div className="text-white/80 text-xs mt-0.5">对准题目 · 自动识别 · 秒出解答</div>
+            </div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </div>
+        </button>
+      </section>
+
       {/* Quick Actions */}
-      <section className="grid grid-cols-4 gap-3">
+      <section className="grid grid-cols-3 gap-3">
         {[
-          { href: "/scan",      icon: "📸", label: "拍照解题", color: "from-nebula-500 to-nebula-600" },
           { href: "/notebook",  icon: "📝", label: "错题本",   color: "from-aurora-500 to-aurora-600" },
           { href: "/practice",  icon: "📋", label: "每日练习", color: "from-solar-400 to-solar-500" },
           { href: "/knowledge", icon: "🃏", label: "知识卡片", color: "from-emerald-400 to-emerald-500" },

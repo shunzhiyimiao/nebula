@@ -43,7 +43,6 @@ function normalizeGeometrySolution(raw: unknown): GeometrySolution | null {
       };
     }
 
-    // 平铺格式：step 本身就是一个 action
     if (typeof step.type === "string") {
       const { explanation, title, desc, ...actionFields } = step;
       return {
@@ -61,7 +60,8 @@ function normalizeGeometrySolution(raw: unknown): GeometrySolution | null {
   return { ...(obj as object), steps: normalizedSteps } as GeometrySolution;
 }
 
-type Stage = "upload" | "text-input" | "preview" | "ocr" | "solving" | "result";
+/** 拍照 → OCR → 确认 → 解题 → 结果 */
+export type Stage = "empty" | "ocr" | "confirm" | "solving" | "result";
 
 type SolverStatus = "idle" | "loading" | "streaming" | "done" | "error";
 
@@ -79,7 +79,7 @@ interface SolverState {
   error: string | null;
 }
 
-interface OcrResult {
+export interface OcrResult {
   questionText: string;
   questionLatex: string | null;
   questionType: string;
@@ -89,106 +89,25 @@ interface OcrResult {
 }
 
 interface ScanContextValue {
-  // 页面阶段
   stage: Stage;
-  setStage: (s: Stage) => void;
-  // 图片
   imageData: string | null;
-  setImageData: (d: string | null) => void;
-  // OCR
   ocrResult: OcrResult | null;
   ocrLoading: boolean;
   ocrError: string | null;
-  // 题目
-  selectedSubject: Subject;
-  setSelectedSubject: (s: Subject) => void;
-  userAnswer: string;
-  setUserAnswer: (a: string) => void;
-  editedQuestion: string;
-  setEditedQuestion: (q: string) => void;
-  // Solver
-  solver: SolverState & { solve: (params: SolveParams) => Promise<void>; reset: () => void };
-  // 几何
+  solver: SolverState & { reset: () => void };
   geometrySolution: GeometrySolution | null;
-  // 操作
-  handleOcr: () => Promise<void>;
+
+  /** 新拍的一张照片（base64 data URL），自动启动 OCR */
+  captureImage: (dataUrl: string) => void;
+  /** OCR 识别失败时重试（不需要重拍） */
+  retryOcr: () => void;
+  /** 用户确认 OCR 结果后点"开始解题" */
+  startSolve: (grade?: string) => Promise<void>;
+  /** 重置所有状态回到初始（用于"重新拍照"） */
   handleReset: () => void;
 }
 
-interface SolveParams {
-  questionText: string;
-  questionLatex?: string;
-  questionType?: string;
-  subject: Subject;
-  grade?: string;
-  userAnswer?: string;
-  options?: string[];
-}
-
-function buildSystemPrompt(subject: string, hasError: boolean, grade?: string): string {
-  const nonAcademicRule = `首先判断用户输入是否为学科作业题目（数学、物理、化学、语文、英语、生物、历史、地理、政治等）。
-如果不是学科题目（如闲聊、违规内容、与学习无关的问题），请拒绝回答，输出：
-===JSON_START===
-{"notAcademic":true,"message":"这不是一道学科题目，我只能帮助解答数学、物理、化学等学科的作业题哦～"}
-===JSON_END===
-不要输出其他任何内容。
-
-如果是学科题目，继续按以下要求解答：`;
-
-  const mathRule = `所有数学表达式（变量、方程、公式）必须用 $...$ 包裹（行内）或 $$...$$ 包裹（独立行），包括JSON的content字段内也要这样写。例如：content里写"代入得 $x^2-5x+6=0$"而不是"代入得 x^2-5x+6=0"。`;
-
-  if (hasError) {
-    return `你是一位经验丰富的${subject}老师，专门辅导中小学生。${grade ? `学生年级: ${grade}` : ""}
-${nonAcademicRule}
-学生做了这道题但答错了，请先分析错误原因，再给出正确解法。分步讲解标注 **Step N: 标题**。
-${mathRule}
-最后在末尾输出：
-===JSON_START===
-{"errorAnalysis":{"errorType":"...","reason":"...","correction":"..."},"steps":[{"order":1,"title":"...","content":"content里数学表达式用$...$","latex":"该步骤的核心公式（纯LaTeX无$符号）"}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["纯LaTeX"],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
-===JSON_END===`;
-  }
-  return `你是一位经验丰富的${subject}老师，专门辅导中小学生。${grade ? `学生年级: ${grade}` : ""}
-${nonAcademicRule}
-请详细解答题目，分步讲解标注 **Step N: 标题**。
-${mathRule}
-最后在末尾输出：
-===JSON_START===
-{"steps":[{"order":1,"title":"...","content":"content里数学表达式用$...$","latex":"该步骤的核心公式（纯LaTeX无$符号）"}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["纯LaTeX"],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
-===JSON_END===`;
-}
-
-const ScanContext = createContext<ScanContextValue | null>(null);
-
-export function ScanProvider({ children }: { children: ReactNode }) {
-  const [stage, setStage] = useState<Stage>("upload");
-  const [imageData, setImageData] = useState<string | null>(null);
-  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
-  const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrError, setOcrError] = useState<string | null>(null);
-  const [selectedSubject, setSelectedSubject] = useState<Subject>("MATH");
-  const [userAnswer, setUserAnswer] = useState("");
-  const [editedQuestion, setEditedQuestion] = useState("");
-
-  const [geometrySolution, setGeometrySolution] = useState<GeometrySolution | null>(null);
-
-  const [solverState, setSolverState] = useState<SolverState>({
-    status: "idle",
-    streamText: "",
-    structuredData: null,
-    error: null,
-  });
-  const abortRef = useRef<AbortController | null>(null);
-
-  const handleOcr = useCallback(async () => {
-    if (!imageData) return;
-    setOcrLoading(true);
-    setOcrError(null);
-    setStage("ocr");
-
-    try {
-      const base64 = imageData.replace(/^data:image\/\w+;base64,/, "");
-      const raw = await clientCallAIWithImage({
-        system: `你是专业的题目识别系统，精确提取图片中的题目内容，严格按JSON格式输出，不输出任何其他内容。
+const OCR_SYSTEM_PROMPT = `你是专业的题目识别系统，精确提取图片中的题目内容，严格按JSON格式输出，不输出任何其他内容。
 
 你需要同时支持印刷体和手写体识别。
 
@@ -201,7 +120,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
 
 字段说明：
 - questionText：题目的纯文本描述，公式用自然语言表达（如"1/2 x - 1 = 4/5 - y"），不含$符号
-- questionLatex：题目的完整LaTeX版本，【所有】数学表达式（包括简单的方程、多项式、数字运算）都必须用$...$包裹，例如："解方程组：$\\frac{1}{2}x - 1 = \\frac{4}{5} - y$"，又如："$(x-3)(x-14)+10=0$"；如题目完全无数学内容则为null
+- questionLatex：题目的完整LaTeX版本，【所有】数学表达式（包括简单的方程、多项式、数字运算）都必须用$...$包裹；如题目完全无数学内容则为null
 - questionType：CHOICE（选择）|FILL_BLANK（填空）|SHORT_ANSWER（简答）|CALCULATION（计算/解答）|OTHER
 - subject：MATH|CHINESE|ENGLISH|PHYSICS|CHEMISTRY|BIOLOGY|HISTORY|GEOGRAPHY|POLITICS
 - options：选择题选项数组如["A. ...", "B. ..."]，非选择题为null
@@ -215,45 +134,134 @@ LaTeX规范：
 - 方程组用\\begin{cases}...\\end{cases}
 
 输出格式（严格JSON）：
-{"questionText":"...","questionLatex":"...","questionType":"...","subject":"...","options":null,"confidence":0.95}`,
+{"questionText":"...","questionLatex":"...","questionType":"...","subject":"...","options":null,"confidence":0.95}`;
+
+function buildSystemPrompt(subject: string, grade?: string): string {
+  const nonAcademicRule = `首先判断用户输入是否为学科作业题目（数学、物理、化学、语文、英语、生物、历史、地理、政治等）。
+如果不是学科题目（如闲聊、违规内容、与学习无关的问题），请拒绝回答，输出：
+===JSON_START===
+{"notAcademic":true,"message":"这不是一道学科题目，我只能帮助解答数学、物理、化学等学科的作业题哦～"}
+===JSON_END===
+不要输出其他任何内容。
+
+如果是学科题目，继续按以下要求解答：`;
+
+  const mathRule = `所有数学表达式（变量、方程、公式）必须用 $...$ 包裹（行内）或 $$...$$ 包裹（独立行），包括JSON的content字段内也要这样写。例如：content里写"代入得 $x^2-5x+6=0$"而不是"代入得 x^2-5x+6=0"。`;
+
+  return `你是一位经验丰富的${subject}老师，专门辅导中小学生。${grade ? `学生年级: ${grade}` : ""}
+${nonAcademicRule}
+请详细解答题目，分步讲解标注 **Step N: 标题**。
+${mathRule}
+最后在末尾输出：
+===JSON_START===
+{"steps":[{"order":1,"title":"...","content":"content里数学表达式用$...$","latex":"该步骤的核心公式（纯LaTeX无$符号）"}],"knowledgePoints":[{"name":"...","isMain":true}],"keyFormulas":["纯LaTeX"],"difficulty":"EASY|MEDIUM|HARD","answer":"..."}
+===JSON_END===`;
+}
+
+const SUBJECT_LABEL: Record<string, string> = {
+  MATH: "数学", PHYSICS: "物理", CHEMISTRY: "化学",
+  ENGLISH: "英语", CHINESE: "语文", BIOLOGY: "生物",
+  HISTORY: "历史", GEOGRAPHY: "地理", POLITICS: "政治",
+};
+
+const ScanContext = createContext<ScanContextValue | null>(null);
+
+export function ScanProvider({ children }: { children: ReactNode }) {
+  const [stage, setStage] = useState<Stage>("empty");
+  const [imageData, setImageData] = useState<string | null>(null);
+  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+
+  const [geometrySolution, setGeometrySolution] = useState<GeometrySolution | null>(null);
+
+  const [solverState, setSolverState] = useState<SolverState>({
+    status: "idle",
+    streamText: "",
+    structuredData: null,
+    error: null,
+  });
+
+  // 竞态守卫：每次 OCR/solve 分配一个 token，完成时如果 token 过期则忽略结果
+  const ocrTokenRef = useRef(0);
+  const solveTokenRef = useRef(0);
+
+  const runOcr = useCallback(async (dataUrl: string) => {
+    const myToken = ++ocrTokenRef.current;
+    setOcrLoading(true);
+    setOcrError(null);
+    setOcrResult(null);
+
+    try {
+      const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+      const raw = await clientCallAIWithImage({
+        system: OCR_SYSTEM_PROMPT,
         prompt: "请仔细识别图片中的全部题目内容。注意：图片可能包含手写文字，请仔细辨认笔迹，结合数学逻辑和上下文推断模糊字符。特别注意数学公式的准确性，按JSON格式输出。",
         imageBase64: base64,
         mediaType: "image/jpeg",
         maxTokens: 4096,
       });
 
+      // 如果在 OCR 过程中用户又拍了新照片，丢弃此次结果
+      if (ocrTokenRef.current !== myToken) return;
+
       const match = raw.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("识别结果解析失败，请重试");
       const data = JSON.parse(match[0]);
 
       setOcrResult(data);
-      setEditedQuestion(data.questionText || "");
-      if (data.subject) setSelectedSubject(data.subject as Subject);
-      setStage("preview");
+      setStage("confirm");
     } catch (err) {
-      setOcrError((err as Error).message);
-      setStage("preview");
+      if (ocrTokenRef.current !== myToken) return;
+      setOcrError((err as Error).message || "识别失败");
+      // 不切换到其他 stage — 留在 "ocr" 让 UI 显示错误 + 重试按钮
     } finally {
-      setOcrLoading(false);
+      if (ocrTokenRef.current === myToken) {
+        setOcrLoading(false);
+      }
     }
-  }, [imageData]);
+  }, []);
 
-  const solve = useCallback(async (params: SolveParams) => {
-    abortRef.current?.abort();
+  const captureImage = useCallback((dataUrl: string) => {
+    // 让正在跑的 OCR/solve 失效
+    ocrTokenRef.current++;
+    solveTokenRef.current++;
+    // 重置所有后续 state
+    setOcrResult(null);
+    setOcrError(null);
+    setGeometrySolution(null);
+    setSolverState({ status: "idle", streamText: "", structuredData: null, error: null });
+    // 设置新图片 + 启动 OCR
+    setImageData(dataUrl);
+    setStage("ocr");
+    runOcr(dataUrl);
+  }, [runOcr]);
+
+  const retryOcr = useCallback(() => {
+    if (!imageData) return;
+    setStage("ocr");
+    runOcr(imageData);
+  }, [imageData, runOcr]);
+
+  const startSolve = useCallback(async (grade?: string) => {
+    if (!ocrResult) return;
+    const myToken = ++solveTokenRef.current;
+
+    setStage("solving");
     setSolverState({ status: "loading", streamText: "", structuredData: null, error: null });
     setGeometrySolution(null);
 
-    const isGeometry = isGeometryQuestion(params.questionText);
+    const isGeometry = isGeometryQuestion(ocrResult.questionText);
+    const subjectLabel = SUBJECT_LABEL[ocrResult.subject] || "学科";
 
     try {
-      let userMessage = `请解答以下题目：\n\n${params.questionText}`;
-      if (params.questionLatex) userMessage += `\n\nLaTeX格式：${params.questionLatex}`;
-      if (params.options) userMessage += `\n\n选项：\n${params.options.join("\n")}`;
-      if (params.userAnswer) userMessage += `\n\n学生的答案：${params.userAnswer}`;
+      let userMessage = `请解答以下题目：\n\n${ocrResult.questionText}`;
+      if (ocrResult.questionLatex) userMessage += `\n\nLaTeX格式：${ocrResult.questionLatex}`;
+      if (ocrResult.options) userMessage += `\n\n选项：\n${ocrResult.options.join("\n")}`;
 
       const systemPrompt = isGeometry
         ? GEOMETRY_SYSTEM_PROMPT
-        : buildSystemPrompt(params.subject, !!params.userAnswer, params.grade);
+        : buildSystemPrompt(subjectLabel, grade);
 
       const stream = clientCallAIStream({
         system: systemPrompt,
@@ -270,6 +278,10 @@ LaTeX规范：
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (solveTokenRef.current !== myToken) {
+          reader.cancel();
+          return;
+        }
 
         const chunk = decoder.decode(value, { stream: true });
         for (const line of chunk.split("\n")) {
@@ -280,12 +292,16 @@ LaTeX规范：
             const parsed = JSON.parse(data);
             if (parsed.text) {
               fullText += parsed.text;
-              setSolverState((prev) => ({ ...prev, streamText: fullText }));
+              if (solveTokenRef.current === myToken) {
+                setSolverState((prev) => ({ ...prev, streamText: fullText }));
+              }
             }
             if (parsed.error) throw new Error(parsed.error);
           } catch {}
         }
       }
+
+      if (solveTokenRef.current !== myToken) return;
 
       // 几何题：尝试解析为 GeometrySolution
       if (isGeometry) {
@@ -297,11 +313,11 @@ LaTeX规范：
             if (geoData?.base?.points && geoData.steps) {
               setGeometrySolution(geoData);
               setSolverState({ status: "done", streamText: fullText, structuredData: null, error: null });
+              setStage("result");
               return;
             }
           }
         } catch {
-          // 几何 JSON 解析失败，fallback 到普通解题
           console.warn("Geometry JSON parse failed, falling back to text solution");
         }
       }
@@ -312,47 +328,51 @@ LaTeX规范：
         try { structured = JSON.parse(jsonMatch[1].trim()); } catch {}
       }
 
-      // 非学科题目：直接返回提示信息作为错误
       if (structured?.notAcademic) {
         setSolverState({ status: "error", streamText: "", structuredData: null, error: structured.message });
+        setStage("result");
         return;
       }
 
       const cleanText = fullText.replace(/===JSON_START===[\s\S]*?===JSON_END===/, "").trim();
       setSolverState({ status: "done", streamText: cleanText, structuredData: structured, error: null });
+      setStage("result");
     } catch (err) {
+      if (solveTokenRef.current !== myToken) return;
       if ((err as Error).name === "AbortError") return;
       setSolverState((prev) => ({ ...prev, status: "error", error: (err as Error).message || "解题失败" }));
+      setStage("result");
     }
-  }, []);
+  }, [ocrResult]);
 
   const resetSolver = useCallback(() => {
-    abortRef.current?.abort();
+    solveTokenRef.current++;
     setSolverState({ status: "idle", streamText: "", structuredData: null, error: null });
   }, []);
 
   const handleReset = useCallback(() => {
-    setStage("upload");
+    ocrTokenRef.current++;
+    solveTokenRef.current++;
+    setStage("empty");
     setImageData(null);
     setOcrResult(null);
     setOcrError(null);
-    setUserAnswer("");
-    setEditedQuestion("");
     setGeometrySolution(null);
-    resetSolver();
-  }, [resetSolver]);
+    setSolverState({ status: "idle", streamText: "", structuredData: null, error: null });
+  }, []);
 
   return (
     <ScanContext.Provider value={{
-      stage, setStage,
-      imageData, setImageData,
-      ocrResult, ocrLoading, ocrError,
-      selectedSubject, setSelectedSubject,
-      userAnswer, setUserAnswer,
-      editedQuestion, setEditedQuestion,
-      solver: { ...solverState, solve, reset: resetSolver },
+      stage,
+      imageData,
+      ocrResult,
+      ocrLoading,
+      ocrError,
+      solver: { ...solverState, reset: resetSolver },
       geometrySolution,
-      handleOcr,
+      captureImage,
+      retryOcr,
+      startSolve,
       handleReset,
     }}>
       {children}
